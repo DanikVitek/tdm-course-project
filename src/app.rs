@@ -18,6 +18,18 @@ extern "C" {
 
 #[function_component]
 pub fn App() -> Html {
+    let available_ship_line = use_state_eq::<DMatrix<bool>, _>(|| {
+        DMatrix::from_row_slice(
+            3,
+            4,
+            &[
+                true, true, true, true, //
+                true, true, true, true, //
+                true, true, true, true, //
+            ],
+        )
+    });
+
     let transport_rate = use_state_eq::<DMatrix<f64>, _>(|| {
         // DMatrix::from_row_slice(
         //     4,
@@ -115,6 +127,7 @@ pub fn App() -> Html {
     html! {
         <main class={classes!("container")}>
             <Table
+                {available_ship_line}
                 {transport_rate}
                 {cost_rate}
                 {min_transport_per_line}

@@ -10,6 +10,7 @@ use crate::reclone;
 
 #[derive(Properties, PartialEq)]
 pub struct Props {
+    pub available_ship_line: UseStateHandle<DMatrix<bool>>,
     pub transport_rate: UseStateHandle<DMatrix<f64>>,
     pub cost_rate: UseStateHandle<DMatrix<f64>>,
     pub min_transport_per_line: UseStateHandle<DVector<f64>>,
@@ -19,6 +20,7 @@ pub struct Props {
 #[function_component]
 pub fn Table(
     Props {
+        available_ship_line,
         transport_rate,
         cost_rate,
         min_transport_per_line,
@@ -80,6 +82,18 @@ pub fn Table(
             UseStateHandle::set(&ships_count_per_type1, new_ships_count_per_type)
         });
 
+    let available_ship_line1 = available_ship_line.clone();
+    let onchange_set_available_ship_line =
+        Callback::from(move |(e, i, j): (onchange::Event, usize, usize)| {
+            let mut new_available_ship_line = available_ship_line1.deref().to_owned();
+            new_available_ship_line[(i, j)] = e
+                .target()
+                .unwrap()
+                .unchecked_into::<HtmlInputElement>()
+                .checked();
+            UseStateHandle::set(&available_ship_line1, new_available_ship_line)
+        });
+
     html! {<div class={classes!("input-table", "centered")}><table class={classes!("tg")}>
         <thead>
             <tr>
@@ -98,37 +112,73 @@ pub fn Table(
             {{
                 reclone!(onsubmit);
                 (1..=n_lines).map(move |line| { // i
-                    let onsubmit = onsubmit.clone();
                     html! {<>
                         <tr>
-                            <td class={classes!("tg-c3ow")} rowspan=2>{line}</td>
+                            <td class={classes!("tg-c3ow")}>{line}</td>
                             {{
-                                reclone!(onsubmit, onchange_set_transport_rate);
+                                reclone!(
+                                    onsubmit,
+                                    onchange_set_transport_rate,
+                                    onchange_set_cost_rate,
+                                    onchange_set_available_ship_line
+                                );
                                 (1..=n_ships).map(move |ship| { //       j, a_ij
-                                    reclone!(onsubmit, onchange_set_transport_rate);
-                                    let onchange = Callback::from(move |e: onchange::Event| onchange_set_transport_rate.emit((e, line-1, ship-1)));
-                                    html!{
+                                    reclone!(
+                                        onsubmit,
+                                        onchange_set_transport_rate,
+                                        onchange_set_cost_rate,
+                                        onchange_set_available_ship_line,
+                                    );
+                                    let onchange_set_transport_rate = Callback::from(move |e: onchange::Event|
+                                        onchange_set_transport_rate.emit((e, line - 1, ship - 1))
+                                    );
+                                    let onchange_set_cost_rate = Callback::from(move |e: onchange::Event|
+                                        onchange_set_cost_rate.emit((e, line - 1, ship - 1))
+                                    );
+                                    let onchange_set_available_ship_line = Callback::from(move |e: onchange::Event|
+                                        onchange_set_available_ship_line.emit((e, line - 1, ship - 1))
+                                    );
+                                    html!{<>
                                         <td
-                                            key={format!("a_{line}_{ship}")}
+                                            key={format!("{line}_{ship}")}
                                             class={classes!("tg-c3ow")}
                                         >
                                             <input
+                                                key={format!("{line}_{ship}_checkbox")}
+                                                type="checkbox"
+                                                checked={available_ship_line[(line - 1, ship - 1)]}
+                                                onchange={onchange_set_available_ship_line}
+                                            />
+                                            <input
                                                 key={format!("a_{line}_{ship}_input")}
+                                                disabled={!available_ship_line[(line - 1, ship - 1)]}
                                                 type="number"
                                                 min=0
                                                 max=9999
-                                                value={transport_rate[(line-1, ship-1)].to_string()}
-                                                {onchange}
+                                                value={transport_rate[(line - 1, ship - 1)].to_string()}
+                                                onchange={onchange_set_transport_rate}
+                                                onsubmit={onsubmit.clone()}
+                                            />
+                                            <input
+                                                key={format!("c_{line}_{ship}_input")}
+                                                disabled={!available_ship_line[(line - 1, ship - 1)]}
+                                                type="number"
+                                                min=0
+                                                max=9999
+                                                value={cost_rate[(line-1, ship-1)].to_string()}
+                                                onchange={onchange_set_cost_rate}
                                                 {onsubmit}
                                             />
                                         </td>
-                                    }
+                                    </>}
                                 })
                                 .collect::<Html>()
                             }}{{
                                 reclone!(onsubmit, onchange_set_min_transport_per_line);
-                                let onchange = Callback::from(move |e: onchange::Event| onchange_set_min_transport_per_line.emit((e, line-1)));
-                                html! {<td class={classes!("tg-c3ow")} rowspan=2> // a_i
+                                let onchange = Callback::from(move |e: onchange::Event|
+                                    onchange_set_min_transport_per_line.emit((e, line-1))
+                                );
+                                html! {<td class={classes!("tg-c3ow")}> // a_i
                                     <input
                                         key={format!("a_{line}_input")}
                                         type="number"
@@ -141,30 +191,6 @@ pub fn Table(
                                 </td>}
                             }}
                         </tr>
-                        <tr>{{
-                            reclone!(onchange_set_cost_rate);
-                            (1..=n_ships).map(move |ship| { //       j, c_ij
-                                reclone!(onsubmit, onchange_set_cost_rate);
-                                let onchange = Callback::from(move |e: onchange::Event| onchange_set_cost_rate.emit((e, line-1, ship-1)));
-                                html!{
-                                    <td
-                                        key={format!("c_{line}_{ship}")}
-                                        class={classes!("tg-c3ow")}
-                                    >
-                                        <input
-                                            key={format!("c_{line}_{ship}_input")}
-                                            type="number"
-                                            min=0
-                                            max=99999
-                                            value={cost_rate[(line-1, ship-1)].to_string()}
-                                            {onchange}
-                                            {onsubmit}
-                                        />
-                                    </td>
-                                }
-                            })
-                            .collect::<Html>()
-                        }}</tr>
                     </>}
                 }).collect::<Html>()
             }}
@@ -172,7 +198,9 @@ pub fn Table(
                 <td class={classes!("tg-c3ow")}>{"Число суден"}</td>
                 {(1..=n_ships).map(move |ship| { // ships count, N_j
                     reclone!(onsubmit, onchange_set_ships_count_per_type);
-                    let onchange = Callback::from(move |e| onchange_set_ships_count_per_type.emit((e, ship-1)));
+                    let onchange = Callback::from(move |e|
+                        onchange_set_ships_count_per_type.emit((e, ship-1))
+                    );
                     html!{
                         <td
                             key={format!("n_{ship}")}
