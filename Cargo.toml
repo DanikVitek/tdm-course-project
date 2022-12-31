@@ -13,7 +13,6 @@ wasm-bindgen-futures = "0.4"
 web-sys = "0.3"
 yew = { version="0.20", features = ["csr"] }
 getrandom = { version = "0.2", features = ["js"] }
-ndarray = "0.15"
 nalgebra = { version = "0.31", features = ["serde-serialize", "rand"] }
 num-traits = "0.2"
 num-bigint = { version = "0.4", features = ["serde"] }
@@ -21,9 +20,15 @@ num-rational = { version = "0.4", features = ["serde", "num-bigint"] }
 num-integer = "0.1"
 lazy_static = "1.4"
 
-[dependencies.material-yew]
-version = "0.2"
-features = ["button"]
+# [dependencies.material-yew]
+# version = "0.2"
+# features = ["button"]
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+opt-level = 3
 
 [workspace]
 members = ["src-tauri"]

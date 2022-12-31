@@ -13,7 +13,7 @@ log = "0.4"
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 tauri = { version = "1.2", features = ["shell-open"] }
-ndarray = "0.15"
+# ndarray = "0.15"
 nalgebra = { version = "0.31", features = ["serde-serialize", "rand"] }
 num-traits = "0.2"
 num-bigint = { version = "0.4", features = ["serde", "rand"] }
@@ -22,7 +22,7 @@ rand = { version = "0.8.5", features = ["serde"] }
 num-integer = "0.1"
 derive-new = "0.5"
 lazy_static = "1.4"
-cfg-iif = "0.2"
+# cfg-iif = "0.2"
 
 [dependencies.tauri-plugin-log]
 git = "https://github.com/tauri-apps/tauri-plugin-log"
