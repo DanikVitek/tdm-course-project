@@ -2,6 +2,7 @@ mod problem;
 mod table;
 mod big_number;
 
+use num_rational::BigRational;
 pub use problem::*;
 pub use table::SimplexTable;
 
@@ -13,8 +14,8 @@ use nalgebra::DVector;
 #[derive(Debug, Clone, PartialEq, IsVariant)]
 pub enum Solution {
     Finite {
-        variables: DVector<f64>,
-        function_value: f64,
+        variables: DVector<BigRational>,
+        function_value: BigRational,
     },
     Infinite,
     Absent,

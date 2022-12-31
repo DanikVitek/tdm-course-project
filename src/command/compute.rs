@@ -1,4 +1,5 @@
 use nalgebra::{DMatrix, DVector, RowDVector};
+use num_rational::BigRational;
 use serde::Serialize;
 use serde_wasm_bindgen::{from_value, to_value};
 
@@ -20,7 +21,7 @@ pub async fn compute<'a>(
     cost_rate: &'a DMatrix<f64>,
     min_transport_per_line: &'a DVector<f64>,
     ships_count_per_type: &'a RowDVector<u16>,
-) -> Result<(DMatrix<f64>, f64), String> {
+) -> Result<(DMatrix<BigRational>, BigRational), String> {
     let args = ComputeArgs {
         transport_rate,
         cost_rate,

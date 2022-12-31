@@ -1,5 +1,9 @@
+use lazy_static::lazy_static;
 use nalgebra::{DMatrix, DVector, DVectorSlice, RowDVector};
+use num_rational::BigRational;
 use num_traits::Zero;
+
+use crate::dbg_display;
 
 use super::{big_number::BigNumber, ObjectiveFunction, Problem, Solution};
 
@@ -9,11 +13,14 @@ pub struct SimplexTable {
     /// Indices of basis vectors
     basis: DVector<usize>,
     /// i_max x j_max table of coefficients from constraints
-    tableau: DMatrix<f64>,
-    rhs: DVector<f64>,
-    coefficients: RowDVector<BigNumber>,
-    // big_coefficient: f64,
+    tableau: DMatrix<BigRational>,
+    rhs: DVector<BigRational>,
+    coefficients: RowDVector<BigNumber<BigRational>>,
     minimization: bool,
+}
+
+lazy_static! {
+    static ref ZERO: BigRational = BigRational::zero();
 }
 
 impl SimplexTable {
@@ -35,11 +42,13 @@ impl SimplexTable {
                 coefficients
                     .column_iter()
                     .enumerate()
-                    .filter_map(|(i, el)| (&el.x == &BigNumber::one_big()).then_some(i))
+                    .filter_map(|(i, el)| {
+                        (&el.x == &BigNumber::<BigRational>::one_big()).then_some(i)
+                    })
                     .collect::<Vec<_>>(),
             ),
             tableau: constraints,
-            coefficients: coefficients.map(BigNumber::from),
+            coefficients: coefficients.map(BigNumber::<BigRational>::from),
             rhs,
             // big_coefficient,
             minimization,
@@ -50,7 +59,7 @@ impl SimplexTable {
         (&self.basis).into()
     }
 
-    pub fn basis_coefficients(&self) -> DVector</* f64 */ BigNumber> {
+    pub fn basis_coefficients(&self) -> DVector</* f64 */ BigNumber<BigRational>> {
         self.basis
             .iter()
             .map(|i| unsafe { self.coefficients.get_unchecked(*i) }.to_owned())
@@ -58,13 +67,14 @@ impl SimplexTable {
             .into()
     }
 
-    pub fn function_estimation(&self) -> BigNumber {
+    pub fn function_estimation(&self) -> BigNumber<BigRational> {
         std::mem::take(
-            &mut (self.basis_coefficients().transpose() * self.rhs.map(BigNumber::from))[0],
+            &mut (dbg_display!(self.basis_coefficients().transpose())
+                * dbg_display!(self.rhs.map(BigNumber::from)))[0],
         )
     }
 
-    pub fn column_estimation(&self, index: usize) -> Option<BigNumber> {
+    pub fn column_estimation(&self, index: usize) -> Option<BigNumber<BigRational>> {
         if index > self.tableau.ncols() {
             return None;
         }
@@ -74,12 +84,15 @@ impl SimplexTable {
 
     /// # Safety
     /// Panics if index is out of bounds
-    unsafe fn column_estimation_unchecked(&self, index: usize) -> BigNumber {
+    unsafe fn column_estimation_unchecked(&self, index: usize) -> BigNumber<BigRational> {
         std::mem::take(
             &mut (self.basis_coefficients().transpose()
-                * self.tableau.column(index).map(BigNumber::from))[0],
+                * self
+                    .tableau
+                    .column(index)
+                    .map(BigNumber::<BigRational>::from))[0],
         ) - {
-            let column_coef = BigNumber::from(self.coefficients[index]);
+            let column_coef = BigNumber::<BigRational>::from(self.coefficients[index].to_owned());
             log::debug!("Coefficient of column {index}: {column_coef}");
             column_coef
         }
@@ -103,7 +116,7 @@ impl SimplexTable {
                 log::debug!("{estimation}");
                 (&estimation > &Zero::zero()).then_some((i, estimation))
             })
-            .max_by(|(_, es1), (_, es2)| es1.total_cmp(es2))
+            .max_by(|(_, es1), (_, es2)| es1.partial_cmp(es2).unwrap())
             .map(|(i, _)| i);
 
         log::info!("Pivot column: {pivot_col:?}");
@@ -121,14 +134,14 @@ impl SimplexTable {
                     .row_iter()
                     .zip(&self.rhs)
                     .enumerate()
-                    .filter(|(_, (pivot_col_el, _))| pivot_col_el.x > 0.)
-                    .map(|(i, (pivot_col_el, rhs_el))| (i, rhs_el / pivot_col_el.x))
-                    .min_by(|(_, ratio1), (_, ratio2)| ratio1.total_cmp(&ratio2))
+                    .filter(|(_, (pivot_col_el, _))| &pivot_col_el.x > &ZERO)
+                    .map(|(i, (pivot_col_el, rhs_el))| (i, rhs_el / &pivot_col_el.x))
+                    .min_by(|(_, ratio1), (_, ratio2)| ratio1.partial_cmp(&ratio2).unwrap())
                     .map(|(i, _)| i)
                     .unwrap();
                 log::info!("Pivot row: {pivot_row}");
 
-                let pivot_el = self.tableau[(pivot_row, pivot_col)];
+                let pivot_el = self.tableau[(pivot_row, pivot_col)].to_owned();
                 log::info!("Pivot element: {pivot_el}");
 
                 // divide all elements in a row by pivot element
@@ -137,8 +150,8 @@ impl SimplexTable {
 
                 // subtract pivot row from other rows till all of elements in pivot coll except of pivot element are zero
                 for i in (0..self.tableau.nrows()).filter(|i| i != &pivot_row) {
-                    let multiplier = self.tableau[(i, pivot_col)];
-                    self.rhs[i] -= self.rhs[pivot_row] * &multiplier;
+                    let multiplier = self.tableau[(i, pivot_col)].to_owned();
+                    self.rhs[i] = &self.rhs[i] - &(&self.rhs[pivot_row] * &multiplier);
 
                     let pivot_row = self.tableau.row(pivot_row).into_owned(); // maybe optimize
                     self.tableau.row_mut(i).zip_apply(
@@ -175,9 +188,9 @@ impl SimplexTable {
                                         .enumerate()
                                         .find_map(|(k, j)| (j == &i).then_some(k))
                                     {
-                                        self.rhs[k]
+                                        self.rhs[k].to_owned()
                                     } else {
-                                        0.
+                                        Zero::zero()
                                     }
                                 }),
                             ),

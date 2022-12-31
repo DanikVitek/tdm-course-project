@@ -22,6 +22,7 @@ rand = { version = "0.8.5", features = ["serde"] }
 num-integer = "0.1"
 derive-new = "0.5"
 lazy_static = "1.4"
+cfg-iif = "0.2"
 
 [dependencies.tauri-plugin-log]
 git = "https://github.com/tauri-apps/tauri-plugin-log"

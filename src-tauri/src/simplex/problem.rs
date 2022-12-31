@@ -7,6 +7,7 @@ use std::{
 use derive_more::{Display, IsVariant};
 use derive_new::new;
 use nalgebra::{Const, DMatrix, DVector, Dynamic, RowDVector, Scalar, UninitMatrix};
+use num_rational::BigRational;
 use num_traits::Zero;
 
 use crate::simplex::big_number::BigNumber;
@@ -19,7 +20,10 @@ use super::{SimplexTable, Solution};
     r#"coefficients.to_string().trim().lines().map(|l| format!("{}\n", l.trim())).collect::<String>()"#,
     r#"if *minimization { "Minimization" } else { "Maximization" }"#
 )]
-pub struct ObjectiveFunction<T: Scalar + fmt::Display + Zero + Add> {
+pub struct ObjectiveFunction<T>
+where
+    T: Scalar + fmt::Display + Zero + Add,
+{
     #[new(value = "coefficients.iter().filter(|c| *c != &T::zero()).count()")]
     pub(crate) n_significant_variables: usize,
     pub(crate) coefficients: RowDVector<T>,
@@ -49,10 +53,9 @@ pub enum Sign {
     // big_coefficient
 )]
 pub struct Problem {
-    pub(crate) objective_function: ObjectiveFunction<BigNumber>,
-    pub(crate) constraints: DMatrix<f64>,
-    pub(crate) rhs: DVector<f64>,
-    // pub(crate) big_coefficient: f64,
+    pub(crate) objective_function: ObjectiveFunction<BigNumber<BigRational>>,
+    pub(crate) constraints: DMatrix<BigRational>,
+    pub(crate) rhs: DVector<BigRational>,
 }
 
 impl Problem {
@@ -63,10 +66,12 @@ impl Problem {
     pub fn solve(self) -> Solution {
         let mut table = SimplexTable::new(self);
         log::info!("Iteration: 1");
+        log::info!("Function estimation: {}", table.function_estimation());
         let (mut solution, mut prev_pivot_col) = table.step(None);
         let mut iteration = 2u32;
         while solution.is_none() {
             log::info!("Iteration: {iteration}");
+            log::info!("Function estimation: {}", table.function_estimation());
             (solution, prev_pivot_col) = table.step(prev_pivot_col);
             iteration += 1;
         }
@@ -127,16 +132,11 @@ impl Problem {
 
         // Inserting artificial variables
         let is_minimization = objective_function.minimization;
-        // let big_coefficient: f64 = objective_function
-        //     .coefficients
-        //     .column_iter()
-        //     .reduce(|acc, e| if acc.x > e.x { acc } else { e })
-        //     .unwrap()
-        //     .x
-        //     * 1_000.;
-        let mut objective_function = ObjectiveFunction {
+        let mut objective_function: ObjectiveFunction<BigNumber<BigRational>> = ObjectiveFunction {
             n_significant_variables: objective_function.n_significant_variables,
-            coefficients: objective_function.coefficients.map(BigNumber::from),
+            coefficients: objective_function
+                .coefficients
+                .map(|f| BigNumber::from(BigRational::from_float(f).unwrap())),
             minimization: is_minimization,
         };
         for i in 0..constraints.len() {
@@ -161,30 +161,32 @@ impl Problem {
         let (constraints, rhs) = {
             let nrows = constraints.len();
             let ncols = constraints[0].coefficients.len();
-            let (constrains, rhs): (DMatrix<MaybeUninit<f64>>, DVector<MaybeUninit<f64>>) =
-                constraints.into_iter().enumerate().fold(
-                    (
-                        UninitMatrix::uninit(Dynamic::new(nrows), Dynamic::new(ncols)),
-                        UninitMatrix::uninit(Dynamic::new(nrows), Const::<1>),
-                    ),
-                    |(mut acc_mat, mut acc_vec), (i, constraint)| {
-                        acc_mat
-                            .row_mut(i)
-                            .iter_mut()
-                            .zip(constraint.coefficients.into_iter())
-                            .for_each(|(acc_mar_row, coefficient)| {
-                                acc_mar_row.write(*coefficient);
-                            });
-                        acc_vec
-                            .row_mut(i)
-                            .iter_mut()
-                            .zip([constraint.rhs])
-                            .for_each(|(acc_vec_row, rhs)| {
-                                acc_vec_row.write(rhs);
-                            });
-                        (acc_mat, acc_vec)
-                    },
-                );
+            let (constrains, rhs): (
+                DMatrix<MaybeUninit<BigRational>>,
+                DVector<MaybeUninit<BigRational>>,
+            ) = constraints.into_iter().enumerate().fold(
+                (
+                    UninitMatrix::uninit(Dynamic::new(nrows), Dynamic::new(ncols)),
+                    UninitMatrix::uninit(Dynamic::new(nrows), Const::<1>),
+                ),
+                |(mut acc_mat, mut acc_vec), (i, constraint)| {
+                    acc_mat
+                        .row_mut(i)
+                        .iter_mut()
+                        .zip(constraint.coefficients.into_iter())
+                        .for_each(|(acc_mar_row, coefficient)| {
+                            acc_mar_row.write(BigRational::from_float(*coefficient).unwrap());
+                        });
+                    acc_vec
+                        .row_mut(i)
+                        .iter_mut()
+                        .zip([constraint.rhs])
+                        .for_each(|(acc_vec_row, rhs)| {
+                            acc_vec_row.write(BigRational::from_float(rhs).unwrap());
+                        });
+                    (acc_mat, acc_vec)
+                },
+            );
 
             unsafe { (constrains.assume_init(), rhs.assume_init()) }
         };
@@ -305,29 +307,29 @@ mod tests {
         assert_str_eq!(
             problem.objective_function.coefficients.to_string(),
             RowDVector::from_row_slice(&[
-                BigNumber::from(15.),
-                BigNumber::from(70.),
-                BigNumber::from(40.),
-                BigNumber::from(20.),
-                BigNumber::from(23.),
-                BigNumber::from(70.),
-                BigNumber::from(25.),
-                BigNumber::from(15.),
-                BigNumber::from(40.),
-                BigNumber::from(40.),
-                BigNumber::from(45.),
-                BigNumber::from(65.),
-                BigNumber::from(0.),
-                BigNumber::from(0.),
-                BigNumber::from(0.),
-                BigNumber::from(0.),
-                BigNumber::one_big(),
-                BigNumber::one_big(),
-                BigNumber::one_big(),
-                BigNumber::one_big(),
-                BigNumber::one_big(),
-                BigNumber::one_big(),
-                BigNumber::one_big()
+                BigNumber::<BigRational>::from(BigRational::from_float(15.).unwrap()),
+                BigNumber::<BigRational>::from(BigRational::from_float(70.).unwrap()),
+                BigNumber::<BigRational>::from(BigRational::from_float(40.).unwrap()),
+                BigNumber::<BigRational>::from(BigRational::from_float(20.).unwrap()),
+                BigNumber::<BigRational>::from(BigRational::from_float(23.).unwrap()),
+                BigNumber::<BigRational>::from(BigRational::from_float(70.).unwrap()),
+                BigNumber::<BigRational>::from(BigRational::from_float(25.).unwrap()),
+                BigNumber::<BigRational>::from(BigRational::from_float(15.).unwrap()),
+                BigNumber::<BigRational>::from(BigRational::from_float(40.).unwrap()),
+                BigNumber::<BigRational>::from(BigRational::from_float(40.).unwrap()),
+                BigNumber::<BigRational>::from(BigRational::from_float(45.).unwrap()),
+                BigNumber::<BigRational>::from(BigRational::from_float(65.).unwrap()),
+                BigNumber::<BigRational>::from(BigRational::from_float(0.).unwrap()),
+                BigNumber::<BigRational>::from(BigRational::from_float(0.).unwrap()),
+                BigNumber::<BigRational>::from(BigRational::from_float(0.).unwrap()),
+                BigNumber::<BigRational>::from(BigRational::from_float(0.).unwrap()),
+                BigNumber::<BigRational>::one_big(),
+                BigNumber::<BigRational>::one_big(),
+                BigNumber::<BigRational>::one_big(),
+                BigNumber::<BigRational>::one_big(),
+                BigNumber::<BigRational>::one_big(),
+                BigNumber::<BigRational>::one_big(),
+                BigNumber::<BigRational>::one_big()
             ])
             .to_string()
         );

@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 
 use nalgebra::{Const, DMatrix, DVector, Dynamic, RowDVector};
+use num_rational::BigRational;
 
 use crate::{ensure_eq, simplex};
 
@@ -10,7 +11,7 @@ pub fn compute(
     cost_rate: DMatrix<f64>,
     min_transport_per_line: DVector<f64>,
     ships_count_per_type: RowDVector<u16>,
-) -> Result<(DMatrix<f64>, f64), Cow<'static, str>> {
+) -> Result<(DMatrix<BigRational>, BigRational), Cow<'static, str>> {
     log::info!(
         "Received input:\n\
         transport_rate:\n{transport_rate}\n\
@@ -53,7 +54,7 @@ pub fn compute(
             variables,
             function_value,
         } => Ok((
-            DMatrix::from_row_iterator(n_lines, n_ships, variables.into_iter().map(|f| *f)),
+            DMatrix::from_row_iterator(n_lines, n_ships, variables.into_iter().map(|f| f.to_owned())),
             function_value,
         )),
         non_compliant => Err(non_compliant.as_str()),

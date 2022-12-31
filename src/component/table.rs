@@ -21,6 +21,8 @@ pub fn Table(
     let n_ships = ships_count_per_type.ncols();
     let n_lines = min_transport_per_line.nrows();
 
+    // let 
+
     html! {<div class={classes!("input-table", "centered")}><table class={classes!("tg")}>
         <thead>
             <tr>
@@ -30,15 +32,17 @@ pub fn Table(
             </tr>
             <tr>
                 {(1..=n_ships) // ship type
-                    .map(|ship| html!{<th key={format!("ship_type_{ship}")} class={classes!("tg-baqh")}>{ship}</th>})
+                    .map(|ship| html!{ 
+                        <th key={format!("ship_type_{ship}")} class={classes!("tg-baqh")}>{ship}</th>
+                    })
                     .collect::<Html>()}
             </tr>
         </thead>
         <tbody>
-            {(1..=n_lines).map(|line| html! {<>
+            {(1..=n_lines).map(|line| html! {<> // i
                 <tr>
                     <td class={classes!("tg-c3ow")} rowspan=2>{line}</td>
-                    {(1..=n_ships) //       a_ij
+                    {(1..=n_ships) //       j, a_ij
                         .map(|ship| html!{
                             <td
                                 key={format!("a_{line}_{ship}")}
@@ -52,8 +56,8 @@ pub fn Table(
                         {&min_transport_per_line[line-1]}
                     </td>
                 </tr>
-                <tr>{
-                    (1..=n_ships) //        c_ij
+                <tr>
+                    {(1..=n_ships) //       j, c_ij
                         .map(|ship| html!{
                             <td
                                 key={format!("c_{line}_{ship}")}
@@ -62,8 +66,8 @@ pub fn Table(
                                 {&cost_rate[(line-1, ship-1)]}
                             </td>
                         })
-                        .collect::<Html>()
-                }</tr>
+                        .collect::<Html>()}
+                </tr>
             </>}).collect::<Html>()}
             <tr>
                 <td class={classes!("tg-c3ow")}>{"Число суден"}</td>
