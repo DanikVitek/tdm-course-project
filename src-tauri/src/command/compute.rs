@@ -82,14 +82,12 @@ fn construct_constraints(
         })
         .zip(min_transport_per_line.row_iter())
         .map(|(coefficients, rhs)| {
-            simplex::Constraint::new(coefficients, simplex::Sign::Greater, rhs.x.clone())
+            simplex::Constraint::new(coefficients, simplex::Sign::Greater, rhs.x)
         })
         .chain({
             let mut coefficients = Vec::with_capacity(n_ships);
             coefficients.push(1.);
-            for _ in 0..n_ships - 1 {
-                coefficients.push(0.);
-            }
+            coefficients.resize(n_ships, 0.);
             let block = coefficients.clone();
             for _ in 0..n_lines - 1 {
                 coefficients.extend_from_slice(&block);

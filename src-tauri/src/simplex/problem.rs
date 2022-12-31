@@ -226,8 +226,8 @@ impl Mul<f64> for Constraint {
 
     fn mul(self, rhs: f64) -> Self::Output {
         Self {
-            coefficients: self.coefficients * rhs.clone(),
-            rhs: self.rhs * &rhs,
+            coefficients: self.coefficients * rhs,
+            rhs: self.rhs * rhs,
             sign: self.sign * rhs,
         }
     }
@@ -235,7 +235,7 @@ impl Mul<f64> for Constraint {
 
 impl MulAssign<f64> for Constraint {
     fn mul_assign(&mut self, rhs: f64) {
-        self.coefficients *= rhs.clone();
+        self.coefficients *= rhs;
         self.rhs *= &rhs;
         self.sign *= rhs;
     }

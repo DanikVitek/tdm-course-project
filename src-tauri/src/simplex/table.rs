@@ -43,7 +43,7 @@ impl SimplexTable {
                     .column_iter()
                     .enumerate()
                     .filter_map(|(i, el)| {
-                        (&el.x == &BigNumber::<BigRational>::one_big()).then_some(i)
+                        (el.x == BigNumber::<BigRational>::one_big()).then_some(i)
                     })
                     .collect::<Vec<_>>(),
             ),
@@ -92,7 +92,7 @@ impl SimplexTable {
                     .column(index)
                     .map(BigNumber::<BigRational>::from))[0],
         ) - {
-            let column_coef = BigNumber::<BigRational>::from(self.coefficients[index].to_owned());
+            let column_coef = self.coefficients[index].to_owned();
             log::debug!("Coefficient of column {index}: {column_coef}");
             column_coef
         }
@@ -114,7 +114,7 @@ impl SimplexTable {
             .filter_map(|i| {
                 let estimation = unsafe { self.column_estimation_unchecked(i) };
                 log::debug!("{estimation}");
-                (&estimation > &Zero::zero()).then_some((i, estimation))
+                (estimation > Zero::zero()).then_some((i, estimation))
             })
             .max_by(|(_, es1), (_, es2)| es1.partial_cmp(es2).unwrap())
             .map(|(i, _)| i);
@@ -136,7 +136,7 @@ impl SimplexTable {
                     .enumerate()
                     .filter(|(_, (pivot_col_el, _))| &pivot_col_el.x > &ZERO)
                     .map(|(i, (pivot_col_el, rhs_el))| (i, rhs_el / &pivot_col_el.x))
-                    .min_by(|(_, ratio1), (_, ratio2)| ratio1.partial_cmp(&ratio2).unwrap())
+                    .min_by(|(_, ratio1), (_, ratio2)| ratio1.partial_cmp(ratio2).unwrap())
                     .map(|(i, _)| i)
                     .unwrap();
                 log::info!("Pivot row: {pivot_row}");

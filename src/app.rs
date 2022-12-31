@@ -147,7 +147,7 @@ pub fn App() -> Html {
                 {"Розв'язати"}
             </button>
 
-            <Solution solution={response}/>
+            <Solution solution_or_err={response}/>
         </main>
     }
 }

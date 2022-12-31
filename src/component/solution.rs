@@ -9,9 +9,11 @@ use yew::{function_component, html, AttrValue, Html, Properties, UseStateHandle}
 
 use crate::component::Math;
 
+pub type SolutionOrError<T> = UseStateHandle<Result<(DMatrix<T>, T), Option<AttrValue>>>;
+
 #[derive(Properties, PartialEq)]
 pub struct Props<T: Scalar + Display> {
-    pub solution: UseStateHandle<Result<(DMatrix<T>, T), Option<AttrValue>>>,
+    pub solution_or_err: SolutionOrError<T>,
 }
 
 lazy_static! {
@@ -19,7 +21,7 @@ lazy_static! {
 }
 
 #[function_component]
-pub fn Solution(Props { solution }: &Props<BigRational>) -> Html {
+pub fn Solution(Props { solution_or_err }: &Props<BigRational>) -> Html {
     let ratio_to_latex = |ratio: &BigRational| -> String {
         if ratio.is_integer() {
             ratio.to_integer().to_string()
@@ -41,7 +43,7 @@ pub fn Solution(Props { solution }: &Props<BigRational>) -> Html {
         }
     };
 
-    match &**solution {
+    match &**solution_or_err {
         Ok((matrix, function_value)) => {
             html! {<>
                 <Math
