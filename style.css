@@ -1,0 +1,58 @@
+.container {
+    padding-left: 25%;
+    padding-right: 25%;
+}
+
+.matrix pre {
+    margin: 0;
+    padding: 0;
+}
+
+.input-table .tg {
+    border-collapse: collapse;
+    border-color: #ccc;
+    border-spacing: 0;
+}
+
+.input-table .tg td {
+    background-color: #fff;
+    border-color: #ccc;
+    border-style: solid;
+    border-width: 1px;
+    color: #333;
+    font-family: Arial, sans-serif;
+    font-size: 14px;
+    overflow: hidden;
+    padding: 10px 5px;
+    word-break: normal;
+}
+
+.input-table .tg th {
+    background-color: #f0f0f0;
+    border-color: #ccc;
+    border-style: solid;
+    border-width: 1px;
+    color: #333;
+    font-family: Arial, sans-serif;
+    font-size: 14px;
+    font-weight: normal;
+    overflow: hidden;
+    padding: 10px 5px;
+    word-break: normal;
+}
+
+.input-table .tg .tg-baqh {
+    text-align: center;
+    vertical-align: center;
+}
+
+.input-table .tg .tg-c3ow {
+    border-color: inherit;
+    text-align: center;
+    vertical-align: center;
+}
+
+div.centered {
+    display: flex;
+    justify-content: center;
+}
