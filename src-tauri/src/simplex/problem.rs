@@ -9,6 +9,7 @@ use derive_new::new;
 use nalgebra::{Const, DMatrix, DVector, Dynamic, RowDVector, Scalar, UninitMatrix};
 use num_traits::{One, Zero};
 use ratio_extension::BigRationalExt;
+use rayon::prelude::*;
 
 use crate::simplex::big_number::BigNumber;
 
@@ -88,7 +89,7 @@ impl Problem {
         mut constraints: Vec<Constraint>,
     ) -> Self {
         let max_coefficients_count = constraints
-            .iter()
+            .par_iter()
             .map(|constraint| constraint.coefficients.len())
             .chain([objective_function.coefficients.len()])
             .max()
@@ -97,7 +98,7 @@ impl Problem {
         assert_ne!(max_coefficients_count, 0);
 
         constraints
-            .iter_mut()
+            .par_iter_mut()
             // Reverse sign on constraints with negative rhs
             .map(|constraint| {
                 if constraint.rhs < Zero::zero() {
@@ -117,7 +118,7 @@ impl Problem {
 
         // Inserting compensating variables
         let non_equals = constraints
-            .iter_mut()
+            .par_iter_mut()
             .enumerate()
             .filter_map(|(i, constraint)| (!constraint.sign.is_equals()).then_some(i))
             .collect::<Vec<_>>();
@@ -149,7 +150,7 @@ impl Problem {
             };
         for i in 0..constraints.len() {
             constraints
-                .iter_mut()
+                .par_iter_mut()
                 .enumerate()
                 .for_each(|(j, constraint)| {
                     constraint.coefficients.extend([if i != j {
@@ -205,7 +206,6 @@ impl Problem {
             objective_function,
             constraints,
             rhs,
-            // big_coefficient,
         }
     }
 }
