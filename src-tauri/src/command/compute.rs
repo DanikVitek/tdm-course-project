@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 
 use nalgebra::{Const, DMatrix, DVector, Dynamic, RowDVector};
-use num_traits::{FromPrimitive, Zero};
+use num_traits::{FromPrimitive, One, Zero};
 use ratio_extension::BigRationalExt;
 
 use crate::{ensure_eq, simplex};
@@ -93,8 +93,8 @@ fn construct_constraints(
         })
         .chain({
             let mut coefficients = Vec::with_capacity(n_ships);
-            coefficients.push(1.);
-            coefficients.resize(n_ships, 0.);
+            coefficients.push(One::one());
+            coefficients.resize(n_ships, Zero::zero());
             let block = coefficients.clone();
             for _ in 0..n_lines - 1 {
                 coefficients.extend_from_slice(&block);
@@ -102,12 +102,7 @@ fn construct_constraints(
             drop(block);
             ships_count_per_type.column_iter().map(move |count| {
                 let constraint = simplex::Constraint::new(
-                    RowDVector::from_iterator(
-                        coefficients.len(),
-                        coefficients
-                            .iter()
-                            .map(|el| BigRationalExt::from_float(*el)),
-                    ),
+                    RowDVector::from_row_slice(&coefficients),
                     simplex::Sign::Equals,
                     BigRationalExt::from_u16(count.x).unwrap(),
                 );
