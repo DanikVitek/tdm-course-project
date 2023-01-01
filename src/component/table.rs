@@ -34,65 +34,70 @@ pub fn Table(
 
     let onsubmit = Callback::from(|e: SubmitEvent| e.prevent_default());
 
-    let transport_rate1 = transport_rate.clone();
-    let onchange_set_transport_rate =
+    let onchange_set_transport_rate = {
+        reclone!(transport_rate);
         Callback::from(move |(e, i, j): (onchange::Event, usize, usize)| {
-            let mut new_transport_rate = transport_rate1.deref().to_owned();
+            let mut new_transport_rate = transport_rate.deref().to_owned();
             new_transport_rate[(i, j)] = e
                 .target()
                 .unwrap()
                 .unchecked_into::<HtmlInputElement>()
                 .value_as_number();
-            UseStateHandle::set(&transport_rate1, new_transport_rate)
-        });
+            UseStateHandle::set(&transport_rate, new_transport_rate)
+        })
+    };
 
-    let cost_rate1 = cost_rate.clone();
-    let onchange_set_cost_rate =
+    let onchange_set_cost_rate = {
+        reclone!(cost_rate);
         Callback::from(move |(e, i, j): (onchange::Event, usize, usize)| {
-            let mut new_cost_rate = cost_rate1.deref().to_owned();
+            let mut new_cost_rate = cost_rate.deref().to_owned();
             new_cost_rate[(i, j)] = e
                 .target()
                 .unwrap()
                 .unchecked_into::<HtmlInputElement>()
                 .value_as_number();
-            UseStateHandle::set(&cost_rate1, new_cost_rate)
-        });
+            UseStateHandle::set(&cost_rate, new_cost_rate)
+        })
+    };
 
-    let min_transport_per_line1 = min_transport_per_line.clone();
-    let onchange_set_min_transport_per_line =
+    let onchange_set_min_transport_per_line = {
+        reclone!(min_transport_per_line);
         Callback::from(move |(e, i): (onchange::Event, usize)| {
-            let mut new_min_transport_per_line = min_transport_per_line1.deref().to_owned();
+            let mut new_min_transport_per_line = min_transport_per_line.deref().to_owned();
             new_min_transport_per_line[i] = e
                 .target()
                 .unwrap()
                 .unchecked_into::<HtmlInputElement>()
                 .value_as_number();
-            UseStateHandle::set(&min_transport_per_line1, new_min_transport_per_line)
-        });
+            UseStateHandle::set(&min_transport_per_line, new_min_transport_per_line)
+        })
+    };
 
-    let ships_count_per_type1 = ships_count_per_type.clone();
-    let onchange_set_ships_count_per_type =
+    let onchange_set_ships_count_per_type = {
+        reclone!(ships_count_per_type);
         Callback::from(move |(e, j): (onchange::Event, usize)| {
-            let mut new_ships_count_per_type = ships_count_per_type1.deref().to_owned();
+            let mut new_ships_count_per_type = ships_count_per_type.deref().to_owned();
             new_ships_count_per_type[j] = e
                 .target()
                 .unwrap()
                 .unchecked_into::<HtmlInputElement>()
                 .value_as_number() as u16;
-            UseStateHandle::set(&ships_count_per_type1, new_ships_count_per_type)
-        });
+            UseStateHandle::set(&ships_count_per_type, new_ships_count_per_type)
+        })
+    };
 
-    let available_ship_line1 = available_ship_line.clone();
-    let onchange_set_available_ship_line =
+    let onchange_set_available_ship_line = {
+        reclone!(available_ship_line);
         Callback::from(move |(e, i, j): (onchange::Event, usize, usize)| {
-            let mut new_available_ship_line = available_ship_line1.deref().to_owned();
+            let mut new_available_ship_line = available_ship_line.deref().to_owned();
             new_available_ship_line[(i, j)] = e
                 .target()
                 .unwrap()
                 .unchecked_into::<HtmlInputElement>()
                 .checked();
-            UseStateHandle::set(&available_ship_line1, new_available_ship_line)
-        });
+            UseStateHandle::set(&available_ship_line, new_available_ship_line)
+        })
+    };
 
     html! {<div class={classes!("input-table", "centered")}><table class={classes!("tg")}>
         <thead>

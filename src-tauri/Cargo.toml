@@ -18,11 +18,11 @@ nalgebra = { version = "0.31", features = ["serde-serialize", "rand"] }
 num-traits = "0.2"
 num-bigint = { version = "0.4", features = ["serde", "rand"] }
 num-rational = { version = "0.4", features = ["serde", "num-bigint"] }
-rand = { version = "0.8.5", features = ["serde"] }
 num-integer = "0.1"
+rand = { version = "0.8.5", features = ["serde"] }
 derive-new = "0.5"
 lazy_static = "1.4"
-# cfg-iif = "0.2"
+ratio-extension = { path = "../ratio-extension" }
 
 [dependencies.tauri-plugin-log]
 git = "https://github.com/tauri-apps/tauri-plugin-log"

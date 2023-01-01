@@ -19,6 +19,7 @@ num-bigint = { version = "0.4", features = ["serde"] }
 num-rational = { version = "0.4", features = ["serde", "num-bigint"] }
 num-integer = "0.1"
 lazy_static = "1.4"
+ratio-extension = { path = "./ratio-extension" }
 
 # [dependencies.material-yew]
 # version = "0.2"
@@ -31,4 +32,4 @@ strip = true
 opt-level = 3
 
 [workspace]
-members = ["src-tauri"]
+members = ["src-tauri", "ratio-extension"]

@@ -1,0 +1,18 @@
+[package]
+name = "ratio-extension"
+version = "1.0.0"
+edition = "2021"
+
+[dependencies]
+num-traits = "0.2"
+num-bigint = { version = "0.4", features = ["serde"] }
+num-rational = { version = "0.4", features = ["serde", "num-bigint"] }
+num-integer = "0.1"
+serde = { version = "1.0", features = ["derive"] }
+
+[dependencies.derive_more]
+version = "0.99"
+features = ["is_variant"]
+
+[dev-dependencies]
+pretty_assertions = "1.3"

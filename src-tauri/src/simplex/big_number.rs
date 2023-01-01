@@ -4,8 +4,10 @@ use std::{
     ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign},
 };
 
+use num_integer::Integer;
 use num_rational::BigRational;
 use num_traits::{One, Zero};
+use ratio_extension::{BigRationalExt, RatioExt};
 
 #[derive(
     Debug,
@@ -19,22 +21,6 @@ use num_traits::{One, Zero};
     derive_more::AddAssign,
     derive_more::SubAssign,
 )]
-// #[display(
-//     fmt = "{}{}{}",
-//     r#"if big_part != &0. && big_part != &1. && big_part != &-1. {
-//         std::borrow::Cow::Owned(format!("{}M", big_part))
-//     } else if big_part == &1. {
-//         std::borrow::Cow::Borrowed("M")
-//     } else if big_part == &-1. {
-//         std::borrow::Cow::Borrowed("-M")
-//     } else {
-//         std::borrow::Cow::Borrowed("")
-//     }"#,
-//     r#"if small_part > &0. && big_part != &0. { "+" } else { "" } "#,
-//     r#"if small_part != &0. || big_part == &0. {
-//         std::borrow::Cow::Owned(small_part.to_string())
-//     } else { std::borrow::Cow::Borrowed("") }"#
-// )]
 pub struct BigNumber<T> {
     big_part: T,
     small_part: T,
@@ -104,10 +90,21 @@ impl<T: One + Zero> BigNumber<T> {
 impl BigNumber<f64> {
     pub fn total_cmp(&self, other: &Self) -> Ordering {
         match self.big_part.total_cmp(&other.big_part) {
-            Ordering::Equal => {}
+            Ordering::Equal => self.small_part.total_cmp(&other.small_part),
+            ord => ord,
+        }
+    }
+}
+
+impl<T> BigNumber<RatioExt<T>>
+where
+    T: Integer + Clone,
+{
+    pub fn total_cmp(&self, other: &Self) -> Ordering {
+        match self.big_part.total_cmp(&other.big_part) {
+            Ordering::Equal => self.small_part.total_cmp(&other.small_part),
             ord => return ord,
         }
-        self.small_part.total_cmp(&other.small_part)
     }
 }
 
@@ -115,6 +112,17 @@ impl TryFrom<BigNumber<BigRational>> for BigRational {
     type Error = String;
 
     fn try_from(value: BigNumber<BigRational>) -> Result<Self, Self::Error> {
+        if !value.big_part.is_zero() {
+            return Err(format!("The number is too big: {value}"));
+        }
+        Ok(value.small_part)
+    }
+}
+
+impl TryFrom<BigNumber<BigRationalExt>> for BigRationalExt {
+    type Error = String;
+
+    fn try_from(value: BigNumber<BigRationalExt>) -> Result<Self, Self::Error> {
         if !value.big_part.is_zero() {
             return Err(format!("The number is too big: {value}"));
         }
@@ -132,6 +140,20 @@ impl TryFrom<BigNumber<f64>> for f64 {
         Ok(value.small_part)
     }
 }
+
+// impl<T> TryFrom<BigNumber<T>> for T
+// where
+//     T: Zero,
+// {
+//     type Error = String;
+
+//     fn try_from(value: BigNumber<T>) -> Result<Self, Self::Error> {
+//         if !value.big_part.is_zero() {
+//             return Err(format!("The number is too big: {value}"));
+//         }
+//         Ok(value.small_part)
+//     }
+// }
 
 impl<T> From<T> for BigNumber<T>
 where
@@ -294,7 +316,7 @@ where
 /// It won't be used for multiplication of two big numbers with big parts both
 impl<T> Mul for BigNumber<T>
 where
-    T: Add<Output = T> + Mul<Output = T> + Clone
+    T: Add<Output = T> + Mul<Output = T> + Clone,
 {
     type Output = BigNumber<T>;
 
@@ -309,25 +331,10 @@ where
     }
 }
 
-// impl<'a, T: 'a> Mul for BigNumber<T>
-// where
-//     Self: 'a,
-//     T: Add<Output = T>/*  + Mul<Output = T> */,
-//     &'a T: Mul<&'a T, Output = T>
-// {
-//     type Output = Self;
-
-//     fn mul(self, rhs: Self) -> Self::Output {
-//         let lhs = &self;
-//         let rhs = &rhs;
-//         lhs * rhs
-//     }
-// }
-
 impl<'a, T: 'a> MulAssign for BigNumber<T>
 where
     Self: Clone,
-    T: Add<Output = T> + Mul<Output = T> + Clone
+    T: Add<Output = T> + Mul<Output = T> + Clone,
 {
     fn mul_assign(&mut self, rhs: Self) {
         *self = self.clone() * rhs

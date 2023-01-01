@@ -1,17 +1,18 @@
 use std::borrow::Cow;
 
 use nalgebra::{Const, DMatrix, DVector, Dynamic, RowDVector};
-use num_rational::BigRational;
+use num_traits::{FromPrimitive, Zero};
+use ratio_extension::BigRationalExt;
 
 use crate::{ensure_eq, simplex};
 
 #[tauri::command]
 pub fn compute(
-    transport_rate: DMatrix<f64>,
-    cost_rate: DMatrix<f64>,
-    min_transport_per_line: DVector<f64>,
+    transport_rate: DMatrix<BigRationalExt>,
+    cost_rate: DMatrix<BigRationalExt>,
+    min_transport_per_line: DVector<BigRationalExt>,
     ships_count_per_type: RowDVector<u16>,
-) -> Result<(DMatrix<BigRational>, BigRational), Cow<'static, str>> {
+) -> Result<(DMatrix<BigRationalExt>, BigRationalExt), Cow<'static, str>> {
     log::info!(
         "Received input:\n\
         transport_rate:\n{transport_rate}\n\
@@ -54,7 +55,11 @@ pub fn compute(
             variables,
             function_value,
         } => Ok((
-            DMatrix::from_row_iterator(n_lines, n_ships, variables.into_iter().map(|f| f.to_owned())),
+            DMatrix::from_row_iterator(
+                n_lines,
+                n_ships,
+                variables.into_iter().map(|f| f.to_owned()),
+            ),
             function_value,
         )),
         non_compliant => Err(non_compliant.as_str()),
@@ -62,8 +67,8 @@ pub fn compute(
 }
 
 fn construct_constraints(
-    transport_rate: DMatrix<f64>,
-    min_transport_per_line: DVector<f64>,
+    transport_rate: DMatrix<BigRationalExt>,
+    min_transport_per_line: DVector<BigRationalExt>,
     ships_count_per_type: RowDVector<u16>,
     n_ships: usize,
     n_lines: usize,
@@ -72,17 +77,19 @@ fn construct_constraints(
         .row_iter()
         .enumerate()
         .map(|(i, row)| {
-            let lines_constraint = row.insert_columns(0, dbg!(n_ships * i), 0.).insert_columns(
-                dbg!(n_ships * (i + 1)),
-                dbg!(n_ships * (n_lines - i - 1)),
-                0.,
-            );
+            let lines_constraint = row
+                .insert_columns(0, dbg!(n_ships * i), Zero::zero())
+                .insert_columns(
+                    dbg!(n_ships * (i + 1)),
+                    dbg!(n_ships * (n_lines - i - 1)),
+                    Zero::zero(),
+                );
             log::info!("{lines_constraint}");
             lines_constraint
         })
         .zip(min_transport_per_line.row_iter())
         .map(|(coefficients, rhs)| {
-            simplex::Constraint::new(coefficients, simplex::Sign::Greater, rhs.x)
+            simplex::Constraint::new(coefficients, simplex::Sign::Greater, rhs.x.to_owned())
         })
         .chain({
             let mut coefficients = Vec::with_capacity(n_ships);
@@ -95,9 +102,14 @@ fn construct_constraints(
             drop(block);
             ships_count_per_type.column_iter().map(move |count| {
                 let constraint = simplex::Constraint::new(
-                    RowDVector::from_row_slice(&coefficients),
+                    RowDVector::from_iterator(
+                        coefficients.len(),
+                        coefficients
+                            .iter()
+                            .map(|el| BigRationalExt::from_float(*el)),
+                    ),
                     simplex::Sign::Equals,
-                    count.x as f64,
+                    BigRationalExt::from_u16(count.x).unwrap(),
                 );
                 coefficients.rotate_right(1);
                 constraint

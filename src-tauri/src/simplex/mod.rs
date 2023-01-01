@@ -2,8 +2,8 @@ mod problem;
 mod table;
 mod big_number;
 
-use num_rational::BigRational;
 pub use problem::*;
+use ratio_extension::BigRationalExt;
 pub use table::SimplexTable;
 
 use std::borrow::Cow;
@@ -14,8 +14,8 @@ use nalgebra::DVector;
 #[derive(Debug, Clone, PartialEq, IsVariant)]
 pub enum Solution {
     Finite {
-        variables: DVector<BigRational>,
-        function_value: BigRational,
+        variables: DVector<BigRationalExt>,
+        function_value: BigRationalExt,
     },
     Infinite,
     Absent,

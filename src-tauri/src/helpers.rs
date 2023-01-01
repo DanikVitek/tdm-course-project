@@ -1,7 +1,3 @@
-mod ratio_ext;
-
-pub use ratio_ext::*;
-
 #[macro_export]
 macro_rules! ensure_eq {
     ($expr1: expr, $expr2: expr) => {

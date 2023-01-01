@@ -1,14 +1,14 @@
 use std::{
     fmt,
-    mem::MaybeUninit,
+    mem::{self, MaybeUninit},
     ops::{Add, Mul, MulAssign},
 };
 
 use derive_more::{Display, IsVariant};
 use derive_new::new;
 use nalgebra::{Const, DMatrix, DVector, Dynamic, RowDVector, Scalar, UninitMatrix};
-use num_rational::BigRational;
-use num_traits::Zero;
+use num_traits::{One, Zero};
+use ratio_extension::BigRationalExt;
 
 use crate::simplex::big_number::BigNumber;
 
@@ -32,9 +32,9 @@ where
 
 #[derive(Debug, Clone, PartialEq, new)]
 pub struct Constraint {
-    coefficients: RowDVector<f64>,
+    coefficients: RowDVector<BigRationalExt>,
     sign: Sign,
-    rhs: f64,
+    rhs: BigRationalExt,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, IsVariant)]
@@ -53,13 +53,16 @@ pub enum Sign {
     // big_coefficient
 )]
 pub struct Problem {
-    pub(crate) objective_function: ObjectiveFunction<BigNumber<BigRational>>,
-    pub(crate) constraints: DMatrix<BigRational>,
-    pub(crate) rhs: DVector<BigRational>,
+    pub(crate) objective_function: ObjectiveFunction<BigNumber<BigRationalExt>>,
+    pub(crate) constraints: DMatrix<BigRationalExt>,
+    pub(crate) rhs: DVector<BigRationalExt>,
 }
 
 impl Problem {
-    pub fn new(objective_function: ObjectiveFunction<f64>, constraints: Vec<Constraint>) -> Self {
+    pub fn new(
+        objective_function: ObjectiveFunction<BigRationalExt>,
+        constraints: Vec<Constraint>,
+    ) -> Self {
         Self::normalize(objective_function, constraints)
     }
 
@@ -81,7 +84,7 @@ impl Problem {
 
     #[inline]
     fn normalize(
-        mut objective_function: ObjectiveFunction<f64>,
+        mut objective_function: ObjectiveFunction<BigRationalExt>,
         mut constraints: Vec<Constraint>,
     ) -> Self {
         let max_coefficients_count = constraints
@@ -97,8 +100,8 @@ impl Problem {
             .iter_mut()
             // Reverse sign on constraints with negative rhs
             .map(|constraint| {
-                if constraint.rhs < 0. {
-                    *constraint *= -1.;
+                if constraint.rhs < Zero::zero() {
+                    *constraint *= -BigRationalExt::one();
                 }
                 &mut constraint.coefficients
             })
@@ -108,7 +111,7 @@ impl Problem {
                 let current_len = coefficients.len();
                 for _ in 0..max_coefficients_count - current_len {
                     let new_len = coefficients.len();
-                    *coefficients = coefficients.clone().insert_column(new_len, 0.);
+                    *coefficients = coefficients.clone().insert_column(new_len, Zero::zero());
                 }
             });
 
@@ -122,31 +125,38 @@ impl Problem {
             let constraint = &mut constraints[i];
             constraint
                 .coefficients
-                .extend([if constraint.sign.is_less() { 1. } else { -1. }]);
-            objective_function.coefficients.extend([0.]);
+                .extend([if constraint.sign.is_less() {
+                    One::one()
+                } else {
+                    -BigRationalExt::one()
+                }]);
+            objective_function
+                .coefficients
+                .extend([BigRationalExt::zero()]);
             let constraints_count = constraints.len();
             for i in (0..constraints_count).filter(|j| j != &i) {
-                constraints[i].coefficients.extend([0.]);
+                constraints[i].coefficients.extend([BigRationalExt::zero()]);
             }
         }
 
         // Inserting artificial variables
         let is_minimization = objective_function.minimization;
-        let mut objective_function: ObjectiveFunction<BigNumber<BigRational>> = ObjectiveFunction {
-            n_significant_variables: objective_function.n_significant_variables,
-            coefficients: objective_function
-                .coefficients
-                .map(|f| BigNumber::from(BigRational::from_float(f).unwrap())),
-            minimization: is_minimization,
-        };
+        let mut objective_function: ObjectiveFunction<BigNumber<BigRationalExt>> =
+            ObjectiveFunction {
+                n_significant_variables: objective_function.n_significant_variables,
+                coefficients: objective_function.coefficients.map(BigNumber::from),
+                minimization: is_minimization,
+            };
         for i in 0..constraints.len() {
             constraints
                 .iter_mut()
                 .enumerate()
                 .for_each(|(j, constraint)| {
-                    constraint
-                        .coefficients
-                        .extend([if i != j { 0. } else { 1. }]);
+                    constraint.coefficients.extend([if i != j {
+                        BigRationalExt::zero()
+                    } else {
+                        BigRationalExt::one()
+                    }]);
                 });
             objective_function.coefficients.extend([if is_minimization {
                 // big_coefficient
@@ -162,27 +172,27 @@ impl Problem {
             let nrows = constraints.len();
             let ncols = constraints[0].coefficients.len();
             let (constrains, rhs): (
-                DMatrix<MaybeUninit<BigRational>>,
-                DVector<MaybeUninit<BigRational>>,
+                DMatrix<MaybeUninit<BigRationalExt>>,
+                DVector<MaybeUninit<BigRationalExt>>,
             ) = constraints.into_iter().enumerate().fold(
                 (
                     UninitMatrix::uninit(Dynamic::new(nrows), Dynamic::new(ncols)),
                     UninitMatrix::uninit(Dynamic::new(nrows), Const::<1>),
                 ),
-                |(mut acc_mat, mut acc_vec), (i, constraint)| {
+                |(mut acc_mat, mut acc_vec), (i, mut constraint)| {
                     acc_mat
                         .row_mut(i)
                         .iter_mut()
-                        .zip(constraint.coefficients.into_iter())
+                        .zip(constraint.coefficients.iter_mut())
                         .for_each(|(acc_mar_row, coefficient)| {
-                            acc_mar_row.write(BigRational::from_float(*coefficient).unwrap());
+                            acc_mar_row.write(mem::take(coefficient));
                         });
                     acc_vec
                         .row_mut(i)
                         .iter_mut()
                         .zip([constraint.rhs])
                         .for_each(|(acc_vec_row, rhs)| {
-                            acc_vec_row.write(BigRational::from_float(rhs).unwrap());
+                            acc_vec_row.write(rhs);
                         });
                     (acc_mat, acc_vec)
                 },
@@ -200,11 +210,11 @@ impl Problem {
     }
 }
 
-impl Mul<f64> for Sign {
+impl Mul<BigRationalExt> for Sign {
     type Output = Self;
 
-    fn mul(self, rhs: f64) -> Self::Output {
-        if rhs >= 0. {
+    fn mul(self, rhs: BigRationalExt) -> Self::Output {
+        if rhs >= Zero::zero() {
             return self;
         }
         match self {
@@ -215,27 +225,27 @@ impl Mul<f64> for Sign {
     }
 }
 
-impl MulAssign<f64> for Sign {
-    fn mul_assign(&mut self, rhs: f64) {
+impl MulAssign<BigRationalExt> for Sign {
+    fn mul_assign(&mut self, rhs: BigRationalExt) {
         *self = *self * rhs;
     }
 }
 
-impl Mul<f64> for Constraint {
+impl Mul<BigRationalExt> for Constraint {
     type Output = Self;
 
-    fn mul(self, rhs: f64) -> Self::Output {
+    fn mul(self, rhs: BigRationalExt) -> Self::Output {
         Self {
-            coefficients: self.coefficients * rhs,
-            rhs: self.rhs * rhs,
+            coefficients: self.coefficients * rhs.clone(),
+            rhs: &self.rhs * &rhs,
             sign: self.sign * rhs,
         }
     }
 }
 
-impl MulAssign<f64> for Constraint {
-    fn mul_assign(&mut self, rhs: f64) {
-        self.coefficients *= rhs;
+impl MulAssign<BigRationalExt> for Constraint {
+    fn mul_assign(&mut self, rhs: BigRationalExt) {
+        self.coefficients *= rhs.clone();
         self.rhs *= &rhs;
         self.sign *= rhs;
     }
@@ -251,54 +261,84 @@ mod tests {
     fn problem_normalize_works_with_my_variant() {
         let problem = Problem::normalize(
             ObjectiveFunction::new(
-                RowDVector::from_row_slice(&[
-                    15., 70., 40., 20., 23., 70., 25., 15., 40., 40., 45., 65.,
-                ]),
+                RowDVector::from_iterator(
+                    12,
+                    [15., 70., 40., 20., 23., 70., 25., 15., 40., 40., 45., 65.]
+                        .into_iter()
+                        .map(BigRationalExt::from_float),
+                ),
                 true,
             ),
             vec![
                 Constraint::new(
-                    RowDVector::from_row_slice(&[
-                        15., 30., 25., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
-                    ]),
+                    RowDVector::from_iterator(
+                        12,
+                        [15., 30., 25., 0., 0., 0., 0., 0., 0., 0., 0., 0.]
+                            .into_iter()
+                            .map(BigRationalExt::from_float),
+                    ),
                     Sign::Greater,
-                    300.,
+                    BigRationalExt::from_float(300.),
                 ),
                 Constraint::new(
-                    RowDVector::from_row_slice(&[
-                        0., 0., 0., 10., 25., 50., 0., 0., 0., 0., 0., 0.,
-                    ]),
+                    RowDVector::from_iterator(
+                        12,
+                        [0., 0., 0., 10., 25., 50., 0., 0., 0., 0., 0., 0.]
+                            .into_iter()
+                            .map(BigRationalExt::from_float),
+                    ),
                     Sign::Greater,
-                    200.,
+                    BigRationalExt::from_float(200.),
                 ),
                 Constraint::new(
-                    RowDVector::from_row_slice(&[
-                        0., 0., 0., 0., 0., 0., 20., 10., 30., 0., 0., 0.,
-                    ]),
+                    RowDVector::from_iterator(
+                        12,
+                        [0., 0., 0., 0., 0., 0., 20., 10., 30., 0., 0., 0.]
+                            .into_iter()
+                            .map(BigRationalExt::from_float),
+                    ),
                     Sign::Greater,
-                    1000.,
+                    BigRationalExt::from_float(1000.),
                 ),
                 Constraint::new(
-                    RowDVector::from_row_slice(&[
-                        0., 0., 0., 0., 0., 0., 0., 0., 0., 50., 17., 45.,
-                    ]),
+                    RowDVector::from_iterator(
+                        12,
+                        [0., 0., 0., 0., 0., 0., 0., 0., 0., 50., 17., 45.]
+                            .into_iter()
+                            .map(BigRationalExt::from_float),
+                    ),
                     Sign::Greater,
-                    500.,
+                    BigRationalExt::from_float(500.),
                 ),
                 Constraint::new(
-                    RowDVector::from_row_slice(&[1., 0., 0., 1., 0., 0., 1., 0., 0., 1., 0., 0.]),
+                    RowDVector::from_iterator(
+                        12,
+                        [1., 0., 0., 1., 0., 0., 1., 0., 0., 1., 0., 0.]
+                            .into_iter()
+                            .map(BigRationalExt::from_float),
+                    ),
                     Sign::Equals,
-                    50.,
+                    BigRationalExt::from_float(50.),
                 ),
                 Constraint::new(
-                    RowDVector::from_row_slice(&[0., 1., 0., 0., 1., 0., 0., 1., 0., 0., 1., 0.]),
+                    RowDVector::from_iterator(
+                        12,
+                        [0., 1., 0., 0., 1., 0., 0., 1., 0., 0., 1., 0.]
+                            .into_iter()
+                            .map(BigRationalExt::from_float),
+                    ),
                     Sign::Equals,
-                    20.,
+                    BigRationalExt::from_float(20.),
                 ),
                 Constraint::new(
-                    RowDVector::from_row_slice(&[0., 0., 1., 0., 0., 1., 0., 0., 1., 0., 0., 1.]),
+                    RowDVector::from_iterator(
+                        12,
+                        [0., 0., 1., 0., 0., 1., 0., 0., 1., 0., 0., 1.]
+                            .into_iter()
+                            .map(BigRationalExt::from_float),
+                    ),
                     Sign::Equals,
-                    30.,
+                    BigRationalExt::from_float(30.),
                 ),
             ],
         );
@@ -307,29 +347,29 @@ mod tests {
         assert_str_eq!(
             problem.objective_function.coefficients.to_string(),
             RowDVector::from_row_slice(&[
-                BigNumber::<BigRational>::from(BigRational::from_float(15.).unwrap()),
-                BigNumber::<BigRational>::from(BigRational::from_float(70.).unwrap()),
-                BigNumber::<BigRational>::from(BigRational::from_float(40.).unwrap()),
-                BigNumber::<BigRational>::from(BigRational::from_float(20.).unwrap()),
-                BigNumber::<BigRational>::from(BigRational::from_float(23.).unwrap()),
-                BigNumber::<BigRational>::from(BigRational::from_float(70.).unwrap()),
-                BigNumber::<BigRational>::from(BigRational::from_float(25.).unwrap()),
-                BigNumber::<BigRational>::from(BigRational::from_float(15.).unwrap()),
-                BigNumber::<BigRational>::from(BigRational::from_float(40.).unwrap()),
-                BigNumber::<BigRational>::from(BigRational::from_float(40.).unwrap()),
-                BigNumber::<BigRational>::from(BigRational::from_float(45.).unwrap()),
-                BigNumber::<BigRational>::from(BigRational::from_float(65.).unwrap()),
-                BigNumber::<BigRational>::from(BigRational::from_float(0.).unwrap()),
-                BigNumber::<BigRational>::from(BigRational::from_float(0.).unwrap()),
-                BigNumber::<BigRational>::from(BigRational::from_float(0.).unwrap()),
-                BigNumber::<BigRational>::from(BigRational::from_float(0.).unwrap()),
-                BigNumber::<BigRational>::one_big(),
-                BigNumber::<BigRational>::one_big(),
-                BigNumber::<BigRational>::one_big(),
-                BigNumber::<BigRational>::one_big(),
-                BigNumber::<BigRational>::one_big(),
-                BigNumber::<BigRational>::one_big(),
-                BigNumber::<BigRational>::one_big()
+                BigNumber::<BigRationalExt>::from(BigRationalExt::from_float(15.)),
+                BigNumber::<BigRationalExt>::from(BigRationalExt::from_float(70.)),
+                BigNumber::<BigRationalExt>::from(BigRationalExt::from_float(40.)),
+                BigNumber::<BigRationalExt>::from(BigRationalExt::from_float(20.)),
+                BigNumber::<BigRationalExt>::from(BigRationalExt::from_float(23.)),
+                BigNumber::<BigRationalExt>::from(BigRationalExt::from_float(70.)),
+                BigNumber::<BigRationalExt>::from(BigRationalExt::from_float(25.)),
+                BigNumber::<BigRationalExt>::from(BigRationalExt::from_float(15.)),
+                BigNumber::<BigRationalExt>::from(BigRationalExt::from_float(40.)),
+                BigNumber::<BigRationalExt>::from(BigRationalExt::from_float(40.)),
+                BigNumber::<BigRationalExt>::from(BigRationalExt::from_float(45.)),
+                BigNumber::<BigRationalExt>::from(BigRationalExt::from_float(65.)),
+                BigNumber::<BigRationalExt>::from(BigRationalExt::from_float(0.)),
+                BigNumber::<BigRationalExt>::from(BigRationalExt::from_float(0.)),
+                BigNumber::<BigRationalExt>::from(BigRationalExt::from_float(0.)),
+                BigNumber::<BigRationalExt>::from(BigRationalExt::from_float(0.)),
+                BigNumber::<BigRationalExt>::one_big(),
+                BigNumber::<BigRationalExt>::one_big(),
+                BigNumber::<BigRationalExt>::one_big(),
+                BigNumber::<BigRationalExt>::one_big(),
+                BigNumber::<BigRationalExt>::one_big(),
+                BigNumber::<BigRationalExt>::one_big(),
+                BigNumber::<BigRationalExt>::one_big()
             ])
             .to_string()
         );
