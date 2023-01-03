@@ -2,6 +2,7 @@ use lazy_static::lazy_static;
 use nalgebra::{DMatrix, DVector, DVectorSlice, RowDVector};
 use num_traits::Zero;
 use ratio_extension::BigRationalExt;
+use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 
 use crate::dbg_display;
 
@@ -34,7 +35,6 @@ impl SimplexTable {
                 },
             constraints,
             rhs,
-            // big_coefficient,
         } = problem;
         Self {
             n_significant_variables,
@@ -50,7 +50,6 @@ impl SimplexTable {
             tableau: constraints,
             coefficients: coefficients.map(BigNumber::<BigRationalExt>::from),
             rhs,
-            // big_coefficient,
             minimization,
         }
     }
@@ -179,9 +178,9 @@ impl SimplexTable {
                     'b: {
                         log::info!("Optimal solution was found");
                         Solution::Finite {
-                            variables: DVector::from_iterator(
-                                self.n_significant_variables,
-                                (0..self.n_significant_variables).map(|i| {
+                            variables: (0..self.n_significant_variables)
+                                .into_par_iter()
+                                .map(|i| {
                                     if let Some(k) = self
                                         .basis
                                         .iter()
@@ -192,8 +191,8 @@ impl SimplexTable {
                                     } else {
                                         Zero::zero()
                                     }
-                                }),
-                            ),
+                                })
+                                .collect(),
                             function_value: match self.function_estimation().try_into() {
                                 Ok(val) => val,
                                 Err(err_msg) => {

@@ -47,7 +47,7 @@ pub fn compute(
     );
     log::info!("Problem formed: {problem}");
 
-    let solution = problem.solve();
+    let solution = problem.solve_with_whole();
     log::info!("Solution: {}", solution.as_str());
 
     match solution {
@@ -55,11 +55,7 @@ pub fn compute(
             variables,
             function_value,
         } => Ok((
-            DMatrix::from_row_iterator(
-                n_lines,
-                n_ships,
-                variables.into_iter().map(|f| f.to_owned()),
-            ),
+            DMatrix::from_row_iterator(n_lines, n_ships, variables.into_iter()),
             function_value,
         )),
         non_compliant => Err(non_compliant.as_str()),

@@ -103,7 +103,7 @@ where
     pub fn total_cmp(&self, other: &Self) -> Ordering {
         match self.big_part.total_cmp(&other.big_part) {
             Ordering::Equal => self.small_part.total_cmp(&other.small_part),
-            ord => return ord,
+            ord => ord,
         }
     }
 }

@@ -1,7 +1,7 @@
 use std::{
     cmp::Ordering,
     fmt,
-    hint::unreachable_unchecked,
+    hint::{unreachable_unchecked, self},
     iter::{Product, Sum},
     mem,
     ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign},
@@ -31,9 +31,33 @@ where
     }
 }
 
-impl<T: Integer + Clone> RatioExt<T> {
+impl<T> RatioExt<T>
+where
+    T: Integer + Clone,
+{
     pub fn from_integer(integer: T) -> RatioExt<T> {
         Self::Finite(Ratio::<T>::from_integer(integer))
+    }
+
+    pub fn finite(self) -> Option<Ratio<T>> {
+        if let Self::Finite(value) = self {
+            return Some(value);
+        }
+        None
+    }
+
+    pub const fn finite_as_ref(&self) -> Option<&Ratio<T>> {
+        if let Self::Finite(value) = self {
+            return Some(value);
+        }
+        None
+    }
+
+    pub const unsafe fn finite_as_ref_unchecked(&self) -> &Ratio<T> {
+        if let Self::Finite(value) = self {
+            return value;
+        }
+        hint::unreachable_unchecked()
     }
 }
 

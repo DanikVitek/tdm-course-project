@@ -1,14 +1,16 @@
 use std::{
-    fmt,
+    borrow::Cow,
+    fmt, hint,
     mem::{self, MaybeUninit},
     ops::{Add, Mul, MulAssign},
+    sync::Arc,
 };
 
 use derive_more::{Display, IsVariant};
 use derive_new::new;
 use nalgebra::{Const, DMatrix, DVector, Dynamic, RowDVector, Scalar, UninitMatrix};
 use num_traits::{One, Zero};
-use ratio_extension::BigRationalExt;
+use ratio_extension::{BigRationalExt, RatioExt};
 use rayon::prelude::*;
 
 use crate::simplex::big_number::BigNumber;
@@ -18,7 +20,7 @@ use super::{SimplexTable, Solution};
 #[derive(Debug, Clone, PartialEq, Display, new)]
 #[display(
     fmt = "ObjectiveFunction {{\n    coefficients:\n{}\n    {}\n}}",
-    r#"coefficients.to_string().trim().lines().map(|l| format!("{}\n", l.trim())).collect::<String>()"#,
+    r#"coefficients.to_string().trim().lines().map(|l| l.trim().to_owned()).collect::<Vec<_>>().join("\n")"#,
     r#"if *minimization { "Minimization" } else { "Maximization" }"#
 )]
 pub struct ObjectiveFunction<T>
@@ -69,10 +71,12 @@ impl Problem {
 
     pub fn solve(self) -> Solution {
         let mut table = SimplexTable::new(self);
+
         log::info!("Iteration: 1");
         log::info!("Function estimation: {}", table.function_estimation());
         let (mut solution, mut prev_pivot_col) = table.step(None);
         let mut iteration = 2u32;
+
         while solution.is_none() {
             log::info!("Iteration: {iteration}");
             log::info!("Function estimation: {}", table.function_estimation());
@@ -81,6 +85,220 @@ impl Problem {
         }
 
         solution.unwrap()
+    }
+
+    pub fn solve_with_whole(self) -> Solution {
+        let solution = self.clone().solve();
+
+        self.improve(solution, Arc::new("root".into()))
+    }
+
+    fn improve(self, solution: Solution, progress: Arc<Cow<'static, str>>) -> Solution {
+        log::info!("{progress}\nSolution: {}", solution.as_str());
+
+        let Solution::Finite { variables, .. } = &solution else {
+            log::info!("Solution is not finite. Returning.");
+            return solution;
+        };
+        log::info!("Solution is finite");
+
+        if variables.par_iter().any(|var| !RatioExt::is_finite(var)) {
+            log::info!("Solution has infinite variables. Returning.");
+            return solution;
+        }
+        log::info!("Solution has no infinite variables");
+
+        let Some((i, var)) = variables.par_iter().enumerate().find_map_any(|(i, var)| {
+            (!unsafe { var.finite_as_ref_unchecked() }.is_integer()).then_some((i, var))
+        }) else {
+            log::info!("Solution has all integer variables. Returning.");
+            return solution;
+        };
+        log::info!("Solution has non-integer variables");
+
+        let var: BigRationalExt = unsafe { var.finite_as_ref_unchecked() }.trunc().into();
+
+        let minimization = self.objective_function.minimization;
+        let solution_arc = Arc::new(&solution);
+        let (left_sol, right_sol) = rayon::join(
+            {
+                let progress = progress.clone();
+                let problem = self.clone();
+                let var = var.clone();
+                let solution_arc = solution_arc.clone();
+                move || {
+                    let mut left_branch = problem;
+                    left_branch.add_constraint_on_var(i, Sign::Less, var);
+                    let left_sol = left_branch.clone().solve();
+
+                    if let Solution::Finite { function_value, .. } = &left_sol {
+                        if minimization && solution_arc.unwrap_finite_ref().1 < function_value {
+                            log::info!("Left branch won't be better:\n{}\nReturning.", left_sol.as_str());
+                            return left_sol;
+                        }
+                        if !minimization && solution_arc.unwrap_finite_ref().1 > function_value {
+                            log::info!("Left branch won't be better:\n{}\nReturning.", left_sol.as_str());
+                            return left_sol;
+                        }
+                    }
+
+                    let progress = ((&*progress).to_owned() + ".left").into();
+
+                    left_branch.improve(left_sol, progress)
+                }
+            },
+            {
+                let progress = progress.clone();
+                let problem = self.clone();
+                move || {
+                    let mut right_branch = problem;
+                    right_branch.add_constraint_on_var(
+                        i,
+                        Sign::Greater,
+                        var + BigRationalExt::one(),
+                    );
+                    let right_sol = right_branch.clone().solve();
+
+                    if let Solution::Finite { function_value, .. } = &right_sol {
+                        if minimization && solution_arc.unwrap_finite_ref().1 < function_value {
+                            log::info!("Right branch won't be better:\n{}\nReturning.", right_sol.as_str());
+                            return right_sol;
+                        }
+                        if !minimization && solution_arc.unwrap_finite_ref().1 > function_value {
+                            log::info!("Right branch won't be better:\n{}\nReturning.", right_sol.as_str());
+                            return right_sol;
+                        }
+                    }
+
+                    let progress = ((&*progress).to_owned() + ".right").into();
+
+                    right_branch.improve(right_sol, progress)
+                }
+            },
+        );
+
+        log::info!("Computed both branches");
+
+        let mut best_sol = solution;
+        if minimization {
+            if let Solution::Finite { function_value, .. } = &left_sol {
+                if function_value <= best_sol.unwrap_finite_ref().1 {
+                    best_sol = left_sol;
+                }
+            }
+            if let Solution::Finite { function_value, .. } = &right_sol {
+                if function_value <= best_sol.unwrap_finite_ref().1 {
+                    best_sol = right_sol;
+                }
+            }
+        } else {
+            if let Solution::Finite { function_value, .. } = &left_sol {
+                if function_value >= best_sol.unwrap_finite_ref().1 {
+                    best_sol = left_sol;
+                }
+            }
+            if let Solution::Finite { function_value, .. } = &right_sol {
+                if function_value >= best_sol.unwrap_finite_ref().1 {
+                    best_sol = right_sol;
+                }
+            }
+        }
+
+        log::info!(
+            "Resulting best solution:\n{}\nReturning.",
+            best_sol.as_str()
+        );
+
+        best_sol
+    }
+
+    fn add_constraint_on_var(&mut self, i: usize, mut sign: Sign, rhs: BigRationalExt) {
+        if sign == Sign::Less && rhs == Zero::zero() {
+            sign = Sign::Equals;
+        }
+        let sign = sign;
+
+        let n_coefs = self.objective_function.coefficients.ncols();
+        let n_constr = self.constraints.nrows();
+        let n_significant = self.objective_function.n_significant_variables;
+        let minimization = self.objective_function.minimization;
+
+        self.constraints = mem::replace(&mut self.constraints, DMatrix::zeros(0, 0))
+            .insert_column(n_coefs, Zero::zero());
+
+        match sign {
+            Sign::Equals => {
+                let mut coefficients: Vec<MaybeUninit<BigRationalExt>> =
+                    Vec::with_capacity(n_coefs + 1);
+                coefficients.resize_with(n_coefs + 1, MaybeUninit::uninit);
+
+                coefficients[i].write(One::one());
+                for j in (0..n_coefs + 1).filter(|j| j != &i && j != &n_coefs) {
+                    coefficients[j].write(Zero::zero());
+                }
+
+                // Artificial var
+                coefficients[n_coefs].write(BigRationalExt::one());
+
+                let coefficients = unsafe { vec_assume_init(coefficients) };
+                insert_row(&mut self.constraints, n_constr, coefficients);
+
+                // Objective function
+                // Artificial var
+                self.objective_function
+                    .coefficients
+                    .extend([if minimization {
+                        BigNumber::one_big()
+                    } else {
+                        -BigNumber::one_big()
+                    }]);
+            }
+            sign @ Sign::Less | sign @ Sign::Greater => {
+                self.constraints = mem::replace(&mut self.constraints, DMatrix::zeros(0, 0))
+                    .insert_column(n_significant, Zero::zero());
+
+                let mut coefficients: Vec<MaybeUninit<BigRationalExt>> =
+                    Vec::with_capacity(n_coefs + 2);
+                coefficients.resize_with(n_coefs + 2, MaybeUninit::uninit);
+
+                coefficients[i].write(One::one());
+                for j in (0..n_coefs + 2)
+                    .filter(|j| j != &i && j != &n_significant && j != &(n_coefs + 1))
+                {
+                    coefficients[j].write(Zero::zero());
+                }
+
+                // Helper var
+                coefficients[n_significant].write(dbg!(match sign {
+                    Sign::Less => BigRationalExt::one(),
+                    Sign::Greater => -BigRationalExt::one(),
+                    _ => unsafe { hint::unreachable_unchecked() },
+                }));
+
+                // Artificial var
+                coefficients[n_coefs + 1].write(BigRationalExt::one());
+
+                let coefficients = unsafe { vec_assume_init(coefficients) };
+                insert_row(&mut self.constraints, n_constr, coefficients);
+
+                // Objective function
+                // Helper var
+                self.objective_function.coefficients = mem::replace(
+                    &mut self.objective_function.coefficients,
+                    RowDVector::zeros(0),
+                )
+                .insert_column(n_significant, Zero::zero());
+                // Artificial var
+                self.objective_function
+                    .coefficients
+                    .extend([if minimization {
+                        BigNumber::one_big()
+                    } else {
+                        -BigNumber::one_big()
+                    }]);
+            }
+        }
+        self.rhs.extend([rhs]);
     }
 
     #[inline]
@@ -210,6 +428,26 @@ impl Problem {
     }
 }
 
+fn insert_row<T>(matrix: &mut DMatrix<T>, i: usize, values: Vec<T>)
+where
+    T: Clone + Scalar + Default + Zero,
+{
+    *matrix = mem::replace(matrix, DMatrix::zeros(0, 0)).insert_row(i, Default::default());
+    matrix
+        .row_mut(i)
+        .zip_apply(&RowDVector::from_vec(values), |z, c| *z = c);
+}
+
+unsafe fn vec_assume_init<T>(vec: Vec<MaybeUninit<T>>) -> Vec<T>
+where
+    T: Send,
+    MaybeUninit<T>: Sized,
+{
+    vec.into_par_iter()
+        .map(|el| unsafe { el.assume_init() })
+        .collect()
+}
+
 impl Mul<BigRationalExt> for Sign {
     type Output = Self;
 
@@ -257,9 +495,8 @@ mod tests {
 
     use super::*;
 
-    #[test]
-    fn problem_normalize_works_with_my_variant() {
-        let problem = Problem::normalize(
+    fn prepare_problem() -> Problem {
+        Problem::normalize(
             ObjectiveFunction::new(
                 RowDVector::from_iterator(
                     12,
@@ -341,35 +578,246 @@ mod tests {
                     BigRationalExt::from_float(30.),
                 ),
             ],
+        )
+    }
+
+    #[test]
+    fn problem_add_constraint_on_var_works_for_3_less_0() {
+        let mut problem = prepare_problem();
+
+        problem.add_constraint_on_var(3, Sign::Less, Zero::zero());
+
+        assert_str_eq!(
+            problem.constraints.to_string(),
+            DMatrix::from_row_slice(
+                8,
+                24,
+                &[
+                    15., 30., 25., 0., 0., 0., 0., 0., 0., 0., 0., 0., -1., 0., 0., 0., 1., 0., 0.,
+                    0., 0., 0., 0., 0., //
+                    0., 0., 0., 10., 25., 50., 0., 0., 0., 0., 0., 0., 0., -1., 0., 0., 0., 1., 0.,
+                    0., 0., 0., 0., 0., //
+                    0., 0., 0., 0., 0., 0., 20., 10., 30., 0., 0., 0., 0., 0., -1., 0., 0., 0., 1.,
+                    0., 0., 0., 0., 0., //
+                    0., 0., 0., 0., 0., 0., 0., 0., 0., 50., 17., 45., 0., 0., 0., -1., 0., 0., 0.,
+                    1., 0., 0., 0., 0., //
+                    1., 0., 0., 1., 0., 0., 1., 0., 0., 1., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+                    1., 0., 0., 0., //
+                    0., 1., 0., 0., 1., 0., 0., 1., 0., 0., 1., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+                    0., 1., 0., 0., //
+                    0., 0., 1., 0., 0., 1., 0., 0., 1., 0., 0., 1., 0., 0., 0., 0., 0., 0., 0., 0.,
+                    0., 0., 1., 0., //
+                    0., 0., 0., 1., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+                    0., 0., 0., 1. //
+                ]
+            )
+            .to_string()
         );
+        assert_str_eq!(
+            problem.rhs.to_string(),
+            DVector::from_column_slice(&[300., 200., 1000., 500., 50., 20., 30., 0.]).to_string()
+        );
+        assert_str_eq!(
+            problem.objective_function.coefficients.to_string(),
+            RowDVector::from_row_slice(&[
+                BigNumber::from(BigRationalExt::from_float(15.)),
+                BigNumber::from(BigRationalExt::from_float(70.)),
+                BigNumber::from(BigRationalExt::from_float(40.)),
+                BigNumber::from(BigRationalExt::from_float(20.)),
+                BigNumber::from(BigRationalExt::from_float(23.)),
+                BigNumber::from(BigRationalExt::from_float(70.)),
+                BigNumber::from(BigRationalExt::from_float(25.)),
+                BigNumber::from(BigRationalExt::from_float(15.)),
+                BigNumber::from(BigRationalExt::from_float(40.)),
+                BigNumber::from(BigRationalExt::from_float(40.)),
+                BigNumber::from(BigRationalExt::from_float(45.)),
+                BigNumber::from(BigRationalExt::from_float(65.)),
+                BigNumber::from(BigRationalExt::from_float(0.)),
+                BigNumber::from(BigRationalExt::from_float(0.)),
+                BigNumber::from(BigRationalExt::from_float(0.)),
+                BigNumber::from(BigRationalExt::from_float(0.)),
+                BigNumber::one_big(),
+                BigNumber::one_big(),
+                BigNumber::one_big(),
+                BigNumber::one_big(),
+                BigNumber::one_big(),
+                BigNumber::one_big(),
+                BigNumber::one_big(),
+                BigNumber::one_big()
+            ])
+            .to_string()
+        );
+    }
+
+    #[test]
+    fn problem_add_constraint_on_var_works_for_3_less_1() {
+        let mut problem = prepare_problem();
+
+        problem.add_constraint_on_var(3, Sign::Less, One::one());
+
+        assert_str_eq!(
+            problem.constraints.to_string(),
+            DMatrix::from_row_slice(
+                8,
+                25,
+                &[
+                    15., 30., 25., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., -1., 0., 0., 0., 1., 0.,
+                    0., 0., 0., 0., 0., 0., //
+                    0., 0., 0., 10., 25., 50., 0., 0., 0., 0., 0., 0., 0., 0., -1., 0., 0., 0., 1.,
+                    0., 0., 0., 0., 0., 0., //
+                    0., 0., 0., 0., 0., 0., 20., 10., 30., 0., 0., 0., 0., 0., 0., -1., 0., 0., 0.,
+                    1., 0., 0., 0., 0., 0., //
+                    0., 0., 0., 0., 0., 0., 0., 0., 0., 50., 17., 45., 0., 0., 0., 0., -1., 0., 0.,
+                    0., 1., 0., 0., 0., 0., //
+                    1., 0., 0., 1., 0., 0., 1., 0., 0., 1., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+                    0., 1., 0., 0., 0., //
+                    0., 1., 0., 0., 1., 0., 0., 1., 0., 0., 1., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+                    0., 0., 1., 0., 0., //
+                    0., 0., 1., 0., 0., 1., 0., 0., 1., 0., 0., 1., 0., 0., 0., 0., 0., 0., 0., 0.,
+                    0., 0., 0., 1., 0., //
+                    0., 0., 0., 1., 0., 0., 0., 0., 0., 0., 0., 0., 1., 0., 0., 0., 0., 0., 0., 0.,
+                    0., 0., 0., 0., 1. //
+                ]
+            )
+            .to_string()
+        );
+        assert_str_eq!(
+            problem.rhs.to_string(),
+            DVector::from_column_slice(&[300., 200., 1000., 500., 50., 20., 30., 1.]).to_string()
+        );
+        assert_str_eq!(
+            problem.objective_function.coefficients.to_string(),
+            RowDVector::from_row_slice(&[
+                BigNumber::from(BigRationalExt::from_float(15.)),
+                BigNumber::from(BigRationalExt::from_float(70.)),
+                BigNumber::from(BigRationalExt::from_float(40.)),
+                BigNumber::from(BigRationalExt::from_float(20.)),
+                BigNumber::from(BigRationalExt::from_float(23.)),
+                BigNumber::from(BigRationalExt::from_float(70.)),
+                BigNumber::from(BigRationalExt::from_float(25.)),
+                BigNumber::from(BigRationalExt::from_float(15.)),
+                BigNumber::from(BigRationalExt::from_float(40.)),
+                BigNumber::from(BigRationalExt::from_float(40.)),
+                BigNumber::from(BigRationalExt::from_float(45.)),
+                BigNumber::from(BigRationalExt::from_float(65.)),
+                BigNumber::from(BigRationalExt::from_float(0.)),
+                BigNumber::from(BigRationalExt::from_float(0.)),
+                BigNumber::from(BigRationalExt::from_float(0.)),
+                BigNumber::from(BigRationalExt::from_float(0.)),
+                BigNumber::from(BigRationalExt::from_float(0.)),
+                BigNumber::one_big(),
+                BigNumber::one_big(),
+                BigNumber::one_big(),
+                BigNumber::one_big(),
+                BigNumber::one_big(),
+                BigNumber::one_big(),
+                BigNumber::one_big(),
+                BigNumber::one_big()
+            ])
+            .to_string()
+        );
+    }
+
+    #[test]
+    fn problem_add_constraint_on_var_works_for_3_greater_2() {
+        let mut problem = prepare_problem();
+
+        problem.add_constraint_on_var(3, Sign::Greater, BigRationalExt::from_float(2.));
+
+        assert_str_eq!(
+            problem.constraints.to_string(),
+            DMatrix::from_row_slice(
+                8,
+                25,
+                &[
+                    15., 30., 25., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., -1., 0., 0., 0., 1., 0.,
+                    0., 0., 0., 0., 0., 0., //
+                    0., 0., 0., 10., 25., 50., 0., 0., 0., 0., 0., 0., 0., 0., -1., 0., 0., 0., 1.,
+                    0., 0., 0., 0., 0., 0., //
+                    0., 0., 0., 0., 0., 0., 20., 10., 30., 0., 0., 0., 0., 0., 0., -1., 0., 0., 0.,
+                    1., 0., 0., 0., 0., 0., //
+                    0., 0., 0., 0., 0., 0., 0., 0., 0., 50., 17., 45., 0., 0., 0., 0., -1., 0., 0.,
+                    0., 1., 0., 0., 0., 0., //
+                    1., 0., 0., 1., 0., 0., 1., 0., 0., 1., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+                    0., 1., 0., 0., 0., //
+                    0., 1., 0., 0., 1., 0., 0., 1., 0., 0., 1., 0., 0., 0., 0., 0., 0., 0., 0., 0.,
+                    0., 0., 1., 0., 0., //
+                    0., 0., 1., 0., 0., 1., 0., 0., 1., 0., 0., 1., 0., 0., 0., 0., 0., 0., 0., 0.,
+                    0., 0., 0., 1., 0., //
+                    0., 0., 0., 1., 0., 0., 0., 0., 0., 0., 0., 0., -1., 0., 0., 0., 0., 0., 0.,
+                    0., 0., 0., 0., 0., 1. //
+                ]
+            )
+            .to_string()
+        );
+        assert_str_eq!(
+            problem.rhs.to_string(),
+            DVector::from_column_slice(&[300., 200., 1000., 500., 50., 20., 30., 2.]).to_string()
+        );
+        assert_str_eq!(
+            problem.objective_function.coefficients.to_string(),
+            RowDVector::from_row_slice(&[
+                BigNumber::from(BigRationalExt::from_float(15.)),
+                BigNumber::from(BigRationalExt::from_float(70.)),
+                BigNumber::from(BigRationalExt::from_float(40.)),
+                BigNumber::from(BigRationalExt::from_float(20.)),
+                BigNumber::from(BigRationalExt::from_float(23.)),
+                BigNumber::from(BigRationalExt::from_float(70.)),
+                BigNumber::from(BigRationalExt::from_float(25.)),
+                BigNumber::from(BigRationalExt::from_float(15.)),
+                BigNumber::from(BigRationalExt::from_float(40.)),
+                BigNumber::from(BigRationalExt::from_float(40.)),
+                BigNumber::from(BigRationalExt::from_float(45.)),
+                BigNumber::from(BigRationalExt::from_float(65.)),
+                BigNumber::from(BigRationalExt::from_float(0.)),
+                BigNumber::from(BigRationalExt::from_float(0.)),
+                BigNumber::from(BigRationalExt::from_float(0.)),
+                BigNumber::from(BigRationalExt::from_float(0.)),
+                BigNumber::from(BigRationalExt::from_float(0.)),
+                BigNumber::one_big(),
+                BigNumber::one_big(),
+                BigNumber::one_big(),
+                BigNumber::one_big(),
+                BigNumber::one_big(),
+                BigNumber::one_big(),
+                BigNumber::one_big(),
+                BigNumber::one_big()
+            ])
+            .to_string()
+        );
+    }
+
+    #[test]
+    fn problem_normalize_works_with_my_variant() {
+        let problem = prepare_problem();
         // let big_coefficient = problem.big_coefficient.clone();
         // assert_eq!(big_coefficient, 7_000_000.);
         assert_str_eq!(
             problem.objective_function.coefficients.to_string(),
             RowDVector::from_row_slice(&[
-                BigNumber::<BigRationalExt>::from(BigRationalExt::from_float(15.)),
-                BigNumber::<BigRationalExt>::from(BigRationalExt::from_float(70.)),
-                BigNumber::<BigRationalExt>::from(BigRationalExt::from_float(40.)),
-                BigNumber::<BigRationalExt>::from(BigRationalExt::from_float(20.)),
-                BigNumber::<BigRationalExt>::from(BigRationalExt::from_float(23.)),
-                BigNumber::<BigRationalExt>::from(BigRationalExt::from_float(70.)),
-                BigNumber::<BigRationalExt>::from(BigRationalExt::from_float(25.)),
-                BigNumber::<BigRationalExt>::from(BigRationalExt::from_float(15.)),
-                BigNumber::<BigRationalExt>::from(BigRationalExt::from_float(40.)),
-                BigNumber::<BigRationalExt>::from(BigRationalExt::from_float(40.)),
-                BigNumber::<BigRationalExt>::from(BigRationalExt::from_float(45.)),
-                BigNumber::<BigRationalExt>::from(BigRationalExt::from_float(65.)),
-                BigNumber::<BigRationalExt>::from(BigRationalExt::from_float(0.)),
-                BigNumber::<BigRationalExt>::from(BigRationalExt::from_float(0.)),
-                BigNumber::<BigRationalExt>::from(BigRationalExt::from_float(0.)),
-                BigNumber::<BigRationalExt>::from(BigRationalExt::from_float(0.)),
-                BigNumber::<BigRationalExt>::one_big(),
-                BigNumber::<BigRationalExt>::one_big(),
-                BigNumber::<BigRationalExt>::one_big(),
-                BigNumber::<BigRationalExt>::one_big(),
-                BigNumber::<BigRationalExt>::one_big(),
-                BigNumber::<BigRationalExt>::one_big(),
-                BigNumber::<BigRationalExt>::one_big()
+                BigNumber::from(BigRationalExt::from_float(15.)),
+                BigNumber::from(BigRationalExt::from_float(70.)),
+                BigNumber::from(BigRationalExt::from_float(40.)),
+                BigNumber::from(BigRationalExt::from_float(20.)),
+                BigNumber::from(BigRationalExt::from_float(23.)),
+                BigNumber::from(BigRationalExt::from_float(70.)),
+                BigNumber::from(BigRationalExt::from_float(25.)),
+                BigNumber::from(BigRationalExt::from_float(15.)),
+                BigNumber::from(BigRationalExt::from_float(40.)),
+                BigNumber::from(BigRationalExt::from_float(40.)),
+                BigNumber::from(BigRationalExt::from_float(45.)),
+                BigNumber::from(BigRationalExt::from_float(65.)),
+                BigNumber::from(BigRationalExt::from_float(0.)),
+                BigNumber::from(BigRationalExt::from_float(0.)),
+                BigNumber::from(BigRationalExt::from_float(0.)),
+                BigNumber::from(BigRationalExt::from_float(0.)),
+                BigNumber::one_big(),
+                BigNumber::one_big(),
+                BigNumber::one_big(),
+                BigNumber::one_big(),
+                BigNumber::one_big(),
+                BigNumber::one_big(),
+                BigNumber::one_big()
             ])
             .to_string()
         );

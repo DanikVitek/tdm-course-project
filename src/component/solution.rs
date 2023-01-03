@@ -23,7 +23,12 @@ lazy_static! {
 }
 
 #[function_component]
-pub fn Solution(Props { is_loading, solution_or_err }: &Props<BigRationalExt>) -> Html {
+pub fn Solution(
+    Props {
+        is_loading,
+        solution_or_err,
+    }: &Props<BigRationalExt>,
+) -> Html {
     let ratio_to_latex = |ratio: &BigRationalExt| -> Cow<'static, str> {
         match ratio {
             RatioExt::Finite(ratio) => (if ratio.is_integer() {

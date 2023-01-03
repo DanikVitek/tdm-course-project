@@ -4,8 +4,11 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::spawn_local;
 use yew::prelude::*;
 
-use crate::component::{Math, Solution, Table};
-use crate::{command, reclone};
+use crate::{
+    command,
+    component::{Math, Solution, Table},
+    reclone,
+};
 
 #[wasm_bindgen]
 extern "C" {
@@ -14,13 +17,15 @@ extern "C" {
 
     #[wasm_bindgen(js_namespace = console, js_name = "log")]
     pub fn log_json(json: &JsValue);
+
+    #[wasm_bindgen(js_namespace = ["window", "__TAURI__", "event"])]
+    pub async fn listen(name: &str, callback: &Closure<dyn FnMut(String)>) -> JsValue;
 }
 
 #[function_component]
 pub fn App() -> Html {
-    let available_ship_line = use_state_eq::<DMatrix<bool>, _>(|| {
-        DMatrix::from_row_slice(4, 3, &[true; 12])
-    });
+    let available_ship_line =
+        use_state_eq::<DMatrix<bool>, _>(|| DMatrix::from_row_slice(4, 3, &[true; 12]));
 
     let transport_rate = use_state_eq::<DMatrix<f64>, _>(|| {
         DMatrix::from_row_slice(
@@ -64,16 +69,12 @@ pub fn App() -> Html {
         //     ],
         // )
     });
-    let min_transport_per_line =
-        use_state_eq::<DVector<f64>, _>(|| 
-            DVector::from_column_slice(&[300., 200., 1000., 500.])
-            // DVector::from_column_slice(&[600., 2000., 1200.])
-        );
-    let ships_count_per_type =
-        use_state_eq::<RowDVector<u16>, _>(|| 
-            RowDVector::from_row_slice(&[50, 20, 30])
-            // RowDVector::from_row_slice(&[40, 60, 20, 70])
-        );
+    let min_transport_per_line = use_state_eq::<DVector<f64>, _>(
+        || DVector::from_column_slice(&[300., 200., 1000., 500.]), // DVector::from_column_slice(&[600., 2000., 1200.])
+    );
+    let ships_count_per_type = use_state_eq::<RowDVector<u16>, _>(
+        || RowDVector::from_row_slice(&[50, 20, 30]), // RowDVector::from_row_slice(&[40, 60, 20, 70])
+    );
 
     assert_eq!(transport_rate.shape(), cost_rate.shape());
     assert_eq!(ships_count_per_type.ncols(), transport_rate.ncols());
@@ -84,7 +85,10 @@ pub fn App() -> Html {
 
     let is_loading = use_state_eq(|| false);
 
-    let response = use_state::<Result<(DMatrix<BigRationalExt>, BigRationalExt), Option<AttrValue>>, _>(|| Err(None));
+    let response = use_state::<
+        Result<(DMatrix<BigRationalExt>, BigRationalExt), Option<AttrValue>>,
+        _,
+    >(|| Err(None));
 
     let solve = {
         reclone!(
