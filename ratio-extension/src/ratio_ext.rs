@@ -230,30 +230,7 @@ where
     type Output = RatioExt<T>;
 
     fn add(self, rhs: Self) -> Self::Output {
-        if self.is_nan() || rhs.is_nan() {
-            return Self::Nan;
-        }
-        match self {
-            Self::Inf => match rhs {
-                Self::Inf => Self::Inf,
-                Self::Finite(_) => Self::Inf,
-                Self::MinusInf => Self::Nan,
-                _ => unsafe { unreachable_unchecked() },
-            },
-            Self::Finite(lhs) => match rhs {
-                Self::Inf => Self::Inf,
-                Self::Finite(rhs) => Self::Finite(lhs + rhs),
-                Self::MinusInf => Self::MinusInf,
-                _ => unsafe { unreachable_unchecked() },
-            },
-            Self::MinusInf => match rhs {
-                Self::Inf => Self::Nan,
-                Self::MinusInf => Self::MinusInf,
-                Self::Finite(_) => Self::MinusInf,
-                _ => unsafe { unreachable_unchecked() },
-            },
-            _ => unsafe { unreachable_unchecked() },
-        }
+        &self + &rhs
     }
 }
 
@@ -296,32 +273,7 @@ where
     T: Clone + Integer,
 {
     fn add_assign(&mut self, rhs: Self) {
-        *self = 'b: {
-            if self.is_nan() || rhs.is_nan() {
-                break 'b Self::Nan;
-            }
-            match self {
-                Self::Inf => match rhs {
-                    Self::Inf => Self::Inf,
-                    Self::Finite(_) => Self::Inf,
-                    Self::MinusInf => Self::Nan,
-                    _ => unsafe { unreachable_unchecked() },
-                },
-                Self::Finite(lhs) => match rhs {
-                    Self::Inf => Self::Inf,
-                    Self::Finite(rhs) => Self::Finite(mem::take(lhs) + rhs),
-                    Self::MinusInf => Self::MinusInf,
-                    _ => unsafe { unreachable_unchecked() },
-                },
-                Self::MinusInf => match rhs {
-                    Self::Inf => Self::Nan,
-                    Self::MinusInf => Self::MinusInf,
-                    Self::Finite(_) => Self::MinusInf,
-                    _ => unsafe { unreachable_unchecked() },
-                },
-                _ => unsafe { unreachable_unchecked() },
-            }
-        }
+        *self += &rhs
     }
 }
 
@@ -366,30 +318,7 @@ where
     type Output = RatioExt<T>;
 
     fn sub(self, rhs: Self) -> Self::Output {
-        if self.is_nan() || rhs.is_nan() {
-            return Self::Nan;
-        }
-        match self {
-            Self::Inf => match rhs {
-                Self::Inf => Self::Nan,
-                Self::Finite(_) => Self::Inf,
-                Self::MinusInf => Self::Inf,
-                _ => unsafe { unreachable_unchecked() },
-            },
-            Self::Finite(lhs) => match rhs {
-                Self::Inf => Self::MinusInf,
-                Self::Finite(rhs) => Self::Finite(lhs - rhs),
-                Self::MinusInf => Self::Inf,
-                _ => unsafe { unreachable_unchecked() },
-            },
-            Self::MinusInf => match rhs {
-                Self::Inf => Self::MinusInf,
-                Self::MinusInf => Self::Nan,
-                Self::Finite(_) => Self::MinusInf,
-                _ => unsafe { unreachable_unchecked() },
-            },
-            _ => unsafe { unreachable_unchecked() },
-        }
+        &self - &rhs
     }
 }
 
@@ -432,32 +361,7 @@ where
     T: Clone + Integer,
 {
     fn sub_assign(&mut self, rhs: Self) {
-        *self = 'b: {
-            if self.is_nan() || rhs.is_nan() {
-                break 'b Self::Nan;
-            }
-            match self {
-                Self::Inf => match rhs {
-                    Self::Inf => Self::Nan,
-                    Self::Finite(_) => Self::Inf,
-                    Self::MinusInf => Self::Inf,
-                    _ => unsafe { unreachable_unchecked() },
-                },
-                Self::Finite(lhs) => match rhs {
-                    Self::Inf => Self::MinusInf,
-                    Self::Finite(rhs) => Self::Finite(mem::take(lhs) - rhs),
-                    Self::MinusInf => Self::Inf,
-                    _ => unsafe { unreachable_unchecked() },
-                },
-                Self::MinusInf => match rhs {
-                    Self::Inf => Self::MinusInf,
-                    Self::MinusInf => Self::Nan,
-                    Self::Finite(_) => Self::MinusInf,
-                    _ => unsafe { unreachable_unchecked() },
-                },
-                _ => unsafe { unreachable_unchecked() },
-            }
-        }
+        *self -= &rhs
     }
 }
 
@@ -502,42 +406,7 @@ where
     type Output = RatioExt<T>;
 
     fn mul(self, rhs: Self) -> Self::Output {
-        if self.is_nan() || rhs.is_nan() {
-            return Self::Nan;
-        }
-        match self {
-            Self::Inf => match rhs {
-                Self::Inf => Self::Inf,
-                Self::Finite(rhs) => match rhs {
-                    _ if rhs < Ratio::zero() => Self::MinusInf,
-                    _ if rhs.is_zero() => Self::zero(),
-                    _ => Self::Inf,
-                },
-                Self::MinusInf => Self::MinusInf,
-                _ => unsafe { unreachable_unchecked() },
-            },
-            Self::Finite(lhs) => match rhs {
-                Self::Inf => match lhs {
-                    _ if lhs < Ratio::zero() => Self::MinusInf,
-                    _ if lhs.is_zero() => Self::zero(),
-                    _ => Self::Inf,
-                },
-                Self::Finite(rhs) => Self::Finite(lhs * rhs),
-                Self::MinusInf => Self::MinusInf,
-                _ => unsafe { unreachable_unchecked() },
-            },
-            Self::MinusInf => match rhs {
-                Self::Inf => Self::MinusInf,
-                Self::MinusInf => Self::Inf,
-                Self::Finite(rhs) => match rhs {
-                    _ if rhs < Ratio::zero() => Self::Inf,
-                    _ if rhs.is_zero() => Self::zero(),
-                    _ => Self::MinusInf,
-                },
-                _ => unsafe { unreachable_unchecked() },
-            },
-            _ => unsafe { unreachable_unchecked() },
-        }
+        &self * &rhs
     }
 }
 
@@ -592,44 +461,7 @@ where
     T: Clone + Integer,
 {
     fn mul_assign(&mut self, rhs: Self) {
-        *self = 'b: {
-            if self.is_nan() || rhs.is_nan() {
-                break 'b Self::Nan;
-            }
-            match self {
-                Self::Inf => match rhs {
-                    Self::Inf => Self::Inf,
-                    Self::Finite(rhs) => match rhs {
-                        _ if rhs < Ratio::zero() => Self::MinusInf,
-                        _ if rhs.is_zero() => Self::zero(),
-                        _ => Self::Inf,
-                    },
-                    Self::MinusInf => Self::MinusInf,
-                    _ => unsafe { unreachable_unchecked() },
-                },
-                Self::Finite(lhs) => match rhs {
-                    Self::Inf => match lhs {
-                        _ if *lhs < Ratio::zero() => Self::MinusInf,
-                        _ if lhs.is_zero() => Self::zero(),
-                        _ => Self::Inf,
-                    },
-                    Self::Finite(rhs) => Self::Finite(mem::take(lhs) * rhs),
-                    Self::MinusInf => Self::MinusInf,
-                    _ => unsafe { unreachable_unchecked() },
-                },
-                Self::MinusInf => match rhs {
-                    Self::Inf => Self::MinusInf,
-                    Self::MinusInf => Self::Inf,
-                    Self::Finite(rhs) => match rhs {
-                        _ if rhs < Ratio::zero() => Self::Inf,
-                        _ if rhs.is_zero() => Self::zero(),
-                        _ => Self::MinusInf,
-                    },
-                    _ => unsafe { unreachable_unchecked() },
-                },
-                _ => unsafe { unreachable_unchecked() },
-            }
-        }
+        *self += &rhs
     }
 }
 
@@ -686,40 +518,7 @@ where
     type Output = RatioExt<T>;
 
     fn div(self, rhs: Self) -> Self::Output {
-        if self.is_nan() || rhs.is_nan() {
-            return Self::Nan;
-        }
-        match self {
-            Self::Inf => match rhs {
-                Self::Finite(rhs) => match rhs {
-                    _ if rhs < Ratio::zero() => Self::MinusInf,
-                    _ => Self::Inf,
-                },
-                Self::Inf | Self::MinusInf => Self::Nan,
-                _ => unsafe { unreachable_unchecked() },
-            },
-            Self::Finite(lhs) => match rhs {
-                Self::Finite(rhs) => match rhs {
-                    _ if rhs.is_zero() => match lhs {
-                        _ if lhs.is_zero() => Self::Nan,
-                        _ if lhs < Ratio::zero() => Self::MinusInf,
-                        _ => Self::Inf,
-                    },
-                    _ => Self::Finite(lhs / rhs),
-                },
-                Self::Inf | Self::MinusInf => Self::zero(),
-                _ => unsafe { unreachable_unchecked() },
-            },
-            Self::MinusInf => match rhs {
-                Self::Finite(rhs) => match rhs {
-                    _ if rhs < Ratio::zero() => Self::Inf,
-                    _ => Self::MinusInf,
-                },
-                Self::Inf | Self::MinusInf => Self::Nan,
-                _ => unsafe { unreachable_unchecked() },
-            },
-            _ => unsafe { unreachable_unchecked() },
-        }
+        &self / &rhs
     }
 }
 
@@ -772,42 +571,7 @@ where
     T: Clone + Integer,
 {
     fn div_assign(&mut self, rhs: Self) {
-        *self = 'b: {
-            if self.is_nan() || rhs.is_nan() {
-                break 'b Self::Nan;
-            }
-            match self {
-                Self::Inf => match rhs {
-                    Self::Finite(rhs) => match rhs {
-                        _ if rhs < Ratio::zero() => Self::MinusInf,
-                        _ => Self::Inf,
-                    },
-                    Self::Inf | Self::MinusInf => Self::Nan,
-                    _ => unsafe { unreachable_unchecked() },
-                },
-                Self::Finite(lhs) => match rhs {
-                    Self::Finite(rhs) => match rhs {
-                        _ if rhs.is_zero() => match lhs {
-                            _ if lhs.is_zero() => Self::Nan,
-                            _ if *lhs < Ratio::zero() => Self::MinusInf,
-                            _ => Self::Inf,
-                        },
-                        _ => Self::Finite(mem::take(lhs) / rhs),
-                    },
-                    Self::Inf | Self::MinusInf => Self::zero(),
-                    _ => unsafe { unreachable_unchecked() },
-                },
-                Self::MinusInf => match rhs {
-                    Self::Finite(rhs) => match rhs {
-                        _ if rhs < Ratio::zero() => Self::Inf,
-                        _ => Self::MinusInf,
-                    },
-                    Self::Inf | Self::MinusInf => Self::Nan,
-                    _ => unsafe { unreachable_unchecked() },
-                },
-                _ => unsafe { unreachable_unchecked() },
-            }
-        }
+        *self *= &rhs;
     }
 }
 
