@@ -1,9 +1,8 @@
 use std::{
-    borrow::Cow,
     fmt, hint,
     mem::{self, MaybeUninit},
     ops::{Add, Mul, MulAssign},
-    sync::Arc,
+    sync::{Arc, Mutex},
     thread,
 };
 
@@ -90,13 +89,13 @@ impl Problem {
     pub fn solve_with_whole(self) -> SolutionResult {
         let solution = self.clone().solve()?;
 
-        let progress = "root".into();
+        let progress = "root";
         log::info!("{progress}");
 
-        self.improve(solution, Arc::new(progress))
+        self.improve(solution, progress)
     }
 
-    fn improve(self, solution: Solution, progress: Arc<Cow<'static, str>>) -> SolutionResult {
+    fn improve(self, solution: Solution, progress: &str) -> SolutionResult {
         let solution = Arc::new(solution);
         log::info!("Solution:\n{solution}");
 
@@ -122,135 +121,33 @@ impl Problem {
 
             // Left branch
             let left_join_handle = s.spawn({
+                let problem = problem.clone();
                 let best_sol = best_sol.clone();
                 let whole_part = whole_part.clone();
-                let progress = progress.clone();
-                let problem = problem.clone();
                 move || -> Result<(), SolutionError> {
-                    let progress = Arc::new(format!("{progress}.left").into());
-                    log::info!("{progress}");
-
-                    let mut problem = (*problem).clone();
-                    problem.add_constraint_on_var(i, Sign::Less, whole_part);
-                    let left_sol = problem.clone().solve()?;
-
-                    let mut best_sol = best_sol.lock().unwrap();
-                    match (&*best_sol, &left_sol) {
-                        (None, Solution { vars, .. }) => {
-                            if vars.par_iter().all(|var| var.is_integer()) {
-                                log::info!("{progress}. Branch all integers. Saving.");
-                                *best_sol = Some(left_sol);
-                                return Ok(());
-                            }
-                            log::info!("{progress}. Branch could be improved. Branching.");
-
-                            *best_sol = Some(problem.improve(left_sol, progress)?);
-                        }
-                        (
-                            Some(Solution {
-                                fn_val: best_fn_val,
-                                ..
-                            }),
-                            Solution {
-                                fn_val: left_fn_val,
-                                vars: left_vars,
-                            },
-                        ) => {
-                            if minimization && best_fn_val <= left_fn_val {
-                                log::info!(
-                                    "{progress}. Branch worse than the best_sol. Returning."
-                                );
-                                return Ok(());
-                            } else if !minimization && best_fn_val >= left_fn_val {
-                                log::info!(
-                                    "{progress}. Branch worse than the best_sol. Returning."
-                                );
-                                return Ok(());
-                            }
-                            if left_vars.par_iter().all(|var| var.is_integer()) {
-                                log::info!("{progress}. Branch all integers. Saving.");
-                                *best_sol = Some(left_sol);
-                                return Ok(());
-                            }
-                            log::info!("{progress}. Branch could be improved. Branching.");
-                            let maybe_improved_sol = problem.improve(left_sol, progress)?;
-                            if matches!(
-                                &maybe_improved_sol, 
-                                Solution { fn_val, vars } 
-                                if ((minimization && fn_val < best_fn_val) || (!minimization && fn_val > best_fn_val))
-                                && vars.par_iter().all(|var| var.is_integer())
-                            ) {
-                                *best_sol = Some(maybe_improved_sol);
-                            }
-                        }
-                    }
-
-                    Ok(())
+                    Self::add_branch(
+                        &format!("{progress}.left"),
+                        problem,
+                        i,
+                        Sign::Less,
+                        whole_part,
+                        best_sol,
+                        minimization,
+                    )
                 }
             });
 
             // Right branch
             let right_join_handle = s.spawn(move || -> Result<(), SolutionError> {
-                let progress = Arc::new(format!("{progress}.right").into());
-                log::info!("{progress}");
-
-                let mut problem = (*problem).clone();
-                problem.add_constraint_on_var(i, Sign::Greater, whole_part + BigRationalExt::one());
-                let right_sol = problem.clone().solve()?;
-
-                let mut best_sol = best_sol.lock().unwrap();
-                match (&*best_sol, &right_sol) {
-                    (None, Solution { vars, .. }) => {
-                        if vars
-                            .par_iter()
-                            .all(|var| var.is_integer())
-                        {
-                            log::info!("{progress}. Branch all integers. Saving.");
-                            *best_sol = Some(right_sol);
-                            return Ok(());
-                        }
-                        log::info!("{progress}. Branch could be improved. Branching.");
-                        *best_sol = Some(problem.improve(right_sol, progress)?);
-                    }
-                    (
-                        Some(Solution {
-                            fn_val: best_fn_val,
-                            ..
-                        }),
-                        Solution {
-                            fn_val: right_fn_val,
-                            vars: right_vars,
-                        },
-                    ) => {
-                        if minimization && best_fn_val <= right_fn_val {
-                            log::info!("{progress}. Branch worse than the best_sol. Returning.");
-                            return Ok(());
-                        } else if !minimization && best_fn_val >= right_fn_val {
-                            log::info!("{progress}. Branch worse than the best_sol. Returning.");
-                            return Ok(());
-                        }
-                        if right_vars
-                            .par_iter()
-                            .all(|var| var.is_integer())
-                        {
-                            log::info!("{progress}. Branch all integers. Saving.");
-                            *best_sol = Some(right_sol);
-                            return Ok(());
-                        }
-                        log::info!("{progress}. Branch could be improved. Branching.");
-                        let maybe_improved_sol = problem.improve(right_sol, progress)?;
-                        if matches!(
-                            &maybe_improved_sol, 
-                            Solution { fn_val, vars } 
-                            if ((minimization && fn_val < best_fn_val) || (!minimization && fn_val > best_fn_val))
-                            && vars.par_iter().all(|var| var.is_integer())
-                        ) {
-                            *best_sol = Some(maybe_improved_sol);
-                        }
-                    }
-                }
-
-                Ok(())
+                Self::add_branch(
+                    &format!("{progress}.right"),
+                    problem,
+                    i,
+                    Sign::Greater,
+                    whole_part + BigRationalExt::one(),
+                    best_sol,
+                    minimization,
+                )
             });
 
             left_join_handle.join().unwrap()?;
@@ -261,11 +158,78 @@ impl Problem {
 
         log::info!("Computed both branches");
 
-        Ok(Arc::try_unwrap(best_sol)
-                    .unwrap()
-                    .into_inner()
-                    .unwrap()
-                    .unwrap())
+        Arc::try_unwrap(best_sol)
+            .unwrap()
+            .into_inner()
+            .unwrap()
+            .ok_or(SolutionError::Absent)
+    }
+
+    fn add_branch(
+        progress: &str,
+        problem: Arc<&Problem>,
+        i: usize,
+        constraint_sign: Sign,
+        rhs: BigRationalExt,
+        best_sol: Arc<Mutex<Option<Solution>>>,
+        minimization: bool,
+    ) -> Result<(), SolutionError> {
+        log::info!("{progress}");
+        let mut problem = (*problem).clone();
+        problem.add_constraint_on_var(i, constraint_sign, rhs);
+        let branch_sol = problem.clone().solve()?;
+        let mut best_sol = best_sol.lock().unwrap();
+        match (&*best_sol, &branch_sol) {
+            (None, Solution { vars, .. }) => {
+                if vars.par_iter().all(|var| var.is_integer()) {
+                    log::info!("{progress}. Branch all integers. Saving.");
+                    *best_sol = Some(branch_sol);
+                    return Ok(());
+                }
+                log::info!("{progress}. Branch could be improved. Branching.");
+
+                let Ok(improved_sol) = problem.improve(branch_sol, progress) else {
+                    return Ok(());
+                };
+                *best_sol = Some(improved_sol);
+            }
+            (
+                Some(Solution {
+                    fn_val: best_fn_val,
+                    ..
+                }),
+                Solution {
+                    fn_val: branch_fn_val,
+                    vars: branch_vars,
+                },
+            ) => {
+                if minimization && best_fn_val <= branch_fn_val {
+                    log::info!("{progress}. Branch worse than the best_sol. Returning.");
+                    return Ok(());
+                } else if !minimization && best_fn_val >= branch_fn_val {
+                    log::info!("{progress}. Branch worse than the best_sol. Returning.");
+                    return Ok(());
+                }
+                if branch_vars.par_iter().all(|var| var.is_integer()) {
+                    log::info!("{progress}. Branch all integers. Saving.");
+                    *best_sol = Some(branch_sol);
+                    return Ok(());
+                }
+                log::info!("{progress}. Branch could be improved. Branching.");
+                let Ok(maybe_improved_sol) = problem.improve(branch_sol, progress) else {
+                    return Ok(());
+                };
+                if matches!(
+                    &maybe_improved_sol,
+                    Solution { fn_val, vars }
+                    if ((minimization && fn_val < best_fn_val) || (!minimization && fn_val > best_fn_val))
+                    && vars.par_iter().all(|var| var.is_integer())
+                ) {
+                    *best_sol = Some(maybe_improved_sol);
+                }
+            }
+        }
+        Ok(())
     }
 
     fn add_constraint_on_var(&mut self, i: usize, mut sign: Sign, rhs: BigRationalExt) {

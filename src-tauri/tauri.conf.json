@@ -60,10 +60,11 @@
     "windows": [
       {
         "fullscreen": false,
-        "height": 600,
+        "maximized": true,
+        "width": 800,
+        "height": 800,
         "resizable": true,
-        "title": "course-project",
-        "width": 800
+        "title": "course-project"
       }
     ]
   }
