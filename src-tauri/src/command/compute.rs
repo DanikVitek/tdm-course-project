@@ -48,15 +48,12 @@ pub fn compute(
     log::info!("Problem formed: {problem}");
 
     let solution = problem.solve_with_whole();
-    log::info!("Solution: {}", solution.as_str());
+    log::info!("Solution:\n{solution}");
 
     match solution {
-        simplex::Solution::Finite {
-            variables,
-            function_value,
-        } => Ok((
-            DMatrix::from_row_iterator(n_lines, n_ships, variables.into_iter()),
-            function_value,
+        simplex::Solution::Finite { vars, fn_val } => Ok((
+            DMatrix::from_row_iterator(n_lines, n_ships, vars.into_iter()),
+            fn_val,
         )),
         non_compliant => Err(non_compliant.as_str()),
     }

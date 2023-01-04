@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 
 #[macro_export]
 macro_rules! ensure_eq {
@@ -33,4 +33,8 @@ macro_rules! dbg_display {
 
 pub fn arc_mut<T>(value: T) -> Arc<Mutex<T>> {
     Arc::new(Mutex::new(value))
+}
+
+pub fn arc_rw<T>(value: T) -> Arc<RwLock<T>> {
+    Arc::new(RwLock::new(value))
 }

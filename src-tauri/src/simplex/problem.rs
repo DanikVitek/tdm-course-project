@@ -4,6 +4,7 @@ use std::{
     mem::{self, MaybeUninit},
     ops::{Add, Mul, MulAssign},
     sync::Arc,
+    thread,
 };
 
 use derive_more::{Display, IsVariant};
@@ -13,9 +14,9 @@ use num_traits::{One, Zero};
 use ratio_extension::{BigRationalExt, RatioExt};
 use rayon::prelude::*;
 
-use crate::simplex::big_number::BigNumber;
+use crate::helpers::arc_mut;
 
-use super::{SimplexTable, Solution};
+use super::{big_number::BigNumber, SimplexTable, Solution};
 
 #[derive(Debug, Clone, PartialEq, Display, new)]
 #[display(
@@ -53,7 +54,6 @@ pub enum Sign {
     objective_function,
     r#"constraints.to_string().trim().lines().map(|l| format!("{}\n", l.trim())).collect::<String>()"#,
     r#"rhs.to_string().trim().lines().map(|l| format!("{}\n", l.trim())).collect::<String>()"#,
-    // big_coefficient
 )]
 pub struct Problem {
     pub(crate) objective_function: ObjectiveFunction<BigNumber<BigRationalExt>>,
@@ -90,126 +90,246 @@ impl Problem {
     pub fn solve_with_whole(self) -> Solution {
         let solution = self.clone().solve();
 
-        self.improve(solution, Arc::new("root".into()))
+        let progress = "root".into();
+
+        self.improve(solution, Arc::new(progress))
     }
 
     fn improve(self, solution: Solution, progress: Arc<Cow<'static, str>>) -> Solution {
-        log::info!("{progress}\nSolution: {}", solution.as_str());
+        let solution = Arc::new(solution);
+        log::info!("{progress}\nSolution:\n{solution}");
 
-        let Solution::Finite { variables, .. } = &solution else {
+        let Solution::Finite { vars, .. } = &*solution else {
             log::info!("Solution is not finite. Returning.");
-            return solution;
+            return Arc::try_unwrap(solution).unwrap();
         };
         log::info!("Solution is finite");
 
-        if variables.par_iter().any(|var| !RatioExt::is_finite(var)) {
+        if vars.par_iter().any(|var| !RatioExt::is_finite(var)) {
             log::info!("Solution has infinite variables. Returning.");
-            return solution;
+            return Arc::try_unwrap(solution).unwrap();
         }
         log::info!("Solution has no infinite variables");
 
-        let Some((i, var)) = variables.par_iter().enumerate().find_map_any(|(i, var)| {
+        let Some((i, var)) = vars.par_iter().enumerate().find_map_any(|(i, var)| {
             (!unsafe { var.finite_as_ref_unchecked() }.is_integer()).then_some((i, var))
         }) else {
             log::info!("Solution has all integer variables. Returning.");
-            return solution;
+            return Arc::try_unwrap(solution).unwrap();
         };
         log::info!("Solution has non-integer variables");
 
         let var: BigRationalExt = unsafe { var.finite_as_ref_unchecked() }.trunc().into();
-
         let minimization = self.objective_function.minimization;
-        let solution_arc = Arc::new(&solution);
-        let (left_sol, right_sol) = rayon::join(
-            {
-                let progress = progress.clone();
-                let problem = self.clone();
+
+        // let best_sol = arc_rw::<Option<Solution>>(None);
+        // let (left_sol, right_sol) = rayon::join(
+        //     {
+        //         let var = var.clone();
+        //         let progress = progress.clone();
+        //         let problem = Arc::new(&self);
+        //         move || -> Solution {
+        //             let mut problem = (*problem).clone();
+        //             problem.add_constraint_on_var(i, Sign::Less, var);
+        //             let left_sol = problem.clone().solve();
+        //
+        //             match &left_sol {
+        //                 Solution::Infinite => {
+        //                     log::info!("Left branch has infinite solution. Returning.",);
+        //                     left_sol
+        //                 }
+        //                 Solution::Absent => {
+        //                     log::info!("Left branch no solution. Returning.",);
+        //                     left_sol
+        //                 }
+        //                 Solution::Finite { vars, .. }
+        //                     if vars.par_iter().all(
+        //                         |var| matches!(var, RatioExt::Finite(ratio) if ratio.is_integer()),
+        //                     ) =>
+        //                 {
+        //                     log::info!("Left branch won't be better. Returning.\n{left_sol}",);
+        //                     left_sol
+        //                 }
+        //                 Solution::Finite { vars, .. } => {
+        //                     log::info!("Left branch won't be better. Returning.\n{left_sol}",);
+        //                     let mut best_sol_wl = best_sol.write().unwrap();
+        //                     match (&mut *best_sol_wl, &left_sol) {
+        //                         (None, Solution::Finite { .. }) => {
+        //                             *best_sol_wl = Some(left_sol.clone());
+        //                             log::info!("Left branch could be better. Branching.");
+        //                             problem.improve(left_sol, Arc::new(format!("{progress}.left").into()))
+        //                         },
+        //                         (Some(s), Solution::Finite { fn_val, .. }) => {
+        //                             if minimization {
+        //                                 if s.unwrap_finite_ref().0 >= fn_val ||  {
+        //                                 }
+        //                             } else {
+        //                             }
+        //                         },
+        //                         _ => {}
+        //                     }
+        //                     left_sol
+        //                 }
+        //             }
+        //         }
+        //     },
+
+        //     || {
+        //         let mut problem = self.clone();
+        //         problem.add_constraint_on_var(i, Sign::Greater, var + BigRationalExt::one());
+        //         let right_sol = problem.clone().solve();
+        //
+        //         match &right_sol {
+        //             Solution::Infinite => {
+        //                 log::info!("Right branch has infinite solution. Returning.",);
+        //                 right_sol
+        //             }
+        //             Solution::Absent => {
+        //                 log::info!("Right branch no solution. Returning.",);
+        //                 right_sol
+        //             }
+        //             Solution::Finite { vars, .. }
+        //                 if vars.par_iter().all(
+        //                     |var| matches!(var, RatioExt::Finite(ratio) if ratio.is_integer()),
+        //                 ) =>
+        //             {
+        //                 log::info!("Right branch won't be better. Returning.\n{right_sol}",);
+        //                 right_sol
+        //             }
+        //             _ => {
+        //                 log::info!("Right branch could be better. Branching.");
+        //                 problem.improve(right_sol, Arc::new(format!("{progress}.right").into()))
+        //             }
+        //         }
+        //     },
+        // );
+
+        let best_sol = arc_mut::<Option<Solution>>(None);
+        thread::scope(|s| {
+            let best_sol = best_sol.clone();
+            let problem = Arc::new(&self);
+            s.spawn({
+                let best_sol = best_sol.clone();
                 let var = var.clone();
-                let solution_arc = solution_arc.clone();
-                move || {
-                    let mut left_branch = problem;
-                    left_branch.add_constraint_on_var(i, Sign::Less, var);
-                    let left_sol = left_branch.clone().solve();
-
-                    if let Solution::Finite { function_value, .. } = &left_sol {
-                        if minimization && solution_arc.unwrap_finite_ref().1 < function_value {
-                            log::info!("Left branch won't be better:\n{}\nReturning.", left_sol.as_str());
-                            return left_sol;
-                        }
-                        if !minimization && solution_arc.unwrap_finite_ref().1 > function_value {
-                            log::info!("Left branch won't be better:\n{}\nReturning.", left_sol.as_str());
-                            return left_sol;
-                        }
-                    }
-
-                    let progress = ((&*progress).to_owned() + ".left").into();
-
-                    left_branch.improve(left_sol, progress)
-                }
-            },
-            {
                 let progress = progress.clone();
-                let problem = self.clone();
+                let problem = problem.clone();
                 move || {
-                    let mut right_branch = problem;
-                    right_branch.add_constraint_on_var(
-                        i,
-                        Sign::Greater,
-                        var + BigRationalExt::one(),
-                    );
-                    let right_sol = right_branch.clone().solve();
+                    let progress = Arc::new(format!("{progress}.left").into());
+                    log::info!("{progress}");
 
-                    if let Solution::Finite { function_value, .. } = &right_sol {
-                        if minimization && solution_arc.unwrap_finite_ref().1 < function_value {
-                            log::info!("Right branch won't be better:\n{}\nReturning.", right_sol.as_str());
-                            return right_sol;
+                    let mut problem = (*problem).clone();
+                    problem.add_constraint_on_var(i, Sign::Less, var);
+                    let left_sol = problem.clone().solve();
+
+                    let mut best_sol = best_sol.lock().unwrap();
+                    match (&*best_sol, &left_sol) {
+                        (None, Solution::Finite { vars, .. })
+                        | (Some(Solution::Infinite), Solution::Finite { vars, .. })
+                        | (Some(Solution::Absent), Solution::Finite { vars, .. }) => {
+                            if vars.par_iter().all(
+                                |var| matches!(var, RatioExt::Finite(ratio) if ratio.is_integer()),
+                            ) {
+                                log::info!("Left branch all integers. Saving.");
+                                *best_sol = Some(left_sol);
+                                return;
+                            }
+                            *best_sol = Some(problem.improve(left_sol, progress));
                         }
-                        if !minimization && solution_arc.unwrap_finite_ref().1 > function_value {
-                            log::info!("Right branch won't be better:\n{}\nReturning.", right_sol.as_str());
-                            return right_sol;
+                        (None, _) => {
+                            log::info!("Left branch won't be better. Saving.");
+                            *best_sol = Some(left_sol);
                         }
+                        (
+                            Some(Solution::Finite {
+                                fn_val: best_fn_val,
+                                ..
+                            }),
+                            Solution::Finite {
+                                fn_val: left_fn_val,
+                                vars: left_vars,
+                            },
+                        ) => {
+                            if minimization && best_fn_val <= left_fn_val {
+                                return;
+                            } else if !minimization && best_fn_val >= left_fn_val {
+                                return;
+                            }
+                            if left_vars.par_iter().all(
+                                |var| matches!(var, RatioExt::Finite(ratio) if ratio.is_integer()),
+                            ) {
+                                *best_sol = Some(left_sol);
+                                return;
+                            }
+                            *best_sol = Some(problem.improve(left_sol, progress));
+                        }
+                        _ => {}
                     }
-
-                    let progress = ((&*progress).to_owned() + ".right").into();
-
-                    right_branch.improve(right_sol, progress)
                 }
-            },
-        );
+            });
+
+            s.spawn(move || {
+                let progress = Arc::new(format!("{progress}.right").into());
+                log::info!("{progress}");
+
+                let mut problem = (*problem).clone();
+                problem.add_constraint_on_var(i, Sign::Greater, var + BigRationalExt::one());
+                let right_sol = problem.clone().solve();
+
+                let mut best_sol = best_sol.lock().unwrap();
+                match (&*best_sol, &right_sol) {
+                    (None, Solution::Finite { vars, .. })
+                    | (Some(Solution::Infinite), Solution::Finite { vars, .. })
+                    | (Some(Solution::Absent), Solution::Finite { vars, .. }) => {
+                        if vars
+                            .par_iter()
+                            .all(|var| matches!(var, RatioExt::Finite(ratio) if ratio.is_integer()))
+                        {
+                            log::info!("Left branch all integers. Saving.");
+                            *best_sol = Some(right_sol);
+                            return;
+                        }
+                        *best_sol = Some(problem.improve(right_sol, progress));
+                    }
+                    (None, _) => {
+                        log::info!("Left branch won't be better. Saving.");
+                        *best_sol = Some(right_sol);
+                    }
+                    (
+                        Some(Solution::Finite {
+                            fn_val: best_fn_val,
+                            ..
+                        }),
+                        Solution::Finite {
+                            fn_val: right_fn_val,
+                            vars: right_vars,
+                        },
+                    ) => {
+                        if minimization && best_fn_val <= right_fn_val {
+                            return;
+                        } else if !minimization && best_fn_val >= right_fn_val {
+                            return;
+                        }
+                        if right_vars
+                            .par_iter()
+                            .all(|var| matches!(var, RatioExt::Finite(ratio) if ratio.is_integer()))
+                        {
+                            *best_sol = Some(right_sol);
+                            return;
+                        }
+                        *best_sol = Some(problem.improve(right_sol, progress));
+                    }
+                    _ => {}
+                }
+            });
+        });
 
         log::info!("Computed both branches");
 
-        let mut best_sol = solution;
-        if minimization {
-            if let Solution::Finite { function_value, .. } = &left_sol {
-                if function_value <= best_sol.unwrap_finite_ref().1 {
-                    best_sol = left_sol;
-                }
-            }
-            if let Solution::Finite { function_value, .. } = &right_sol {
-                if function_value <= best_sol.unwrap_finite_ref().1 {
-                    best_sol = right_sol;
-                }
-            }
-        } else {
-            if let Solution::Finite { function_value, .. } = &left_sol {
-                if function_value >= best_sol.unwrap_finite_ref().1 {
-                    best_sol = left_sol;
-                }
-            }
-            if let Solution::Finite { function_value, .. } = &right_sol {
-                if function_value >= best_sol.unwrap_finite_ref().1 {
-                    best_sol = right_sol;
-                }
-            }
-        }
-
-        log::info!(
-            "Resulting best solution:\n{}\nReturning.",
-            best_sol.as_str()
-        );
-
-        best_sol
+        Arc::try_unwrap(best_sol)
+            .unwrap()
+            .into_inner()
+            .unwrap()
+            .unwrap()
     }
 
     fn add_constraint_on_var(&mut self, i: usize, mut sign: Sign, rhs: BigRationalExt) {

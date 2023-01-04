@@ -178,7 +178,7 @@ impl SimplexTable {
                     'b: {
                         log::info!("Optimal solution was found");
                         Solution::Finite {
-                            variables: (0..self.n_significant_variables)
+                            vars: (0..self.n_significant_variables)
                                 .into_par_iter()
                                 .map(|i| {
                                     if let Some(k) = self
@@ -193,7 +193,7 @@ impl SimplexTable {
                                     }
                                 })
                                 .collect(),
-                            function_value: match self.function_estimation().try_into() {
+                            fn_val: match self.function_estimation().try_into() {
                                 Ok(val) => val,
                                 Err(err_msg) => {
                                     log::error!("{err_msg}");
