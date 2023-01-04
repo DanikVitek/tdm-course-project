@@ -152,15 +152,15 @@ impl Problem {
                             if vars.par_iter().all(
                                 |var| matches!(var, RatioExt::Finite(ratio) if ratio.is_integer()),
                             ) {
-                                log::info!("Left branch all integers. Saving.");
+                                log::info!("{progress}. Branch all integers. Saving.");
                                 *best_sol = Some(left_sol);
                                 return;
                             }
-                            log::info!("Left branch could be improved. Branching.");
+                            log::info!("{progress}. Branch could be improved. Branching.");
                             *best_sol = Some(problem.improve(left_sol, progress));
                         }
                         (None, _) => {
-                            log::info!("Left branch won't be better. Saving.");
+                            log::info!("{progress}. Branch won't be better. Saving.");
                             *best_sol = Some(left_sol);
                         }
                         (
@@ -174,24 +174,24 @@ impl Problem {
                             },
                         ) => {
                             if minimization && best_fn_val <= left_fn_val {
-                                log::info!("Left branch worse than the best_sol. Returning.");
+                                log::info!("{progress}. Branch worse than the best_sol. Returning.");
                                 return;
                             } else if !minimization && best_fn_val >= left_fn_val {
-                                log::info!("Left branch worse than the best_sol. Returning.");
+                                log::info!("{progress}. Branch worse than the best_sol. Returning.");
                                 return;
                             }
                             if left_vars.par_iter().all(
                                 |var| matches!(var, RatioExt::Finite(ratio) if ratio.is_integer()),
                             ) {
-                                log::info!("Left branch all integers. Saving.");
+                                log::info!("{progress}. Branch all integers. Saving.");
                                 *best_sol = Some(left_sol);
                                 return;
                             }
-                            log::info!("Left branch could be improved. Branching.");
+                            log::info!("{progress}. Branch could be improved. Branching.");
                             *best_sol = Some(problem.improve(left_sol, progress));
                         }
                         _ => {
-                            log::info!("Nether best_sol, nor left_sol finite. Returning.");
+                            log::info!("{progress}. Neither best_sol, nor left_sol finite. Returning.");
                         }
                     }
                 }
@@ -215,15 +215,15 @@ impl Problem {
                             .par_iter()
                             .all(|var| matches!(var, RatioExt::Finite(ratio) if ratio.is_integer()))
                         {
-                            log::info!("Right branch all integers. Saving.");
+                            log::info!("{progress}. Branch all integers. Saving.");
                             *best_sol = Some(right_sol);
                             return;
                         }
-                        log::info!("Right branch could be improved. Branching.");
+                        log::info!("{progress}. Branch could be improved. Branching.");
                         *best_sol = Some(problem.improve(right_sol, progress));
                     }
                     (None, _) => {
-                        log::info!("Right branch won't be better. Saving.");
+                        log::info!("{progress}. Branch won't be better. Saving.");
                         *best_sol = Some(right_sol);
                     }
                     (
@@ -237,25 +237,25 @@ impl Problem {
                         },
                     ) => {
                         if minimization && best_fn_val <= right_fn_val {
-                            log::info!("Right branch worse than the best_sol. Returning.");
+                            log::info!("{progress}. Branch worse than the best_sol. Returning.");
                             return;
                         } else if !minimization && best_fn_val >= right_fn_val {
-                            log::info!("Right branch worse than the best_sol. Returning.");
+                            log::info!("{progress}. Branch worse than the best_sol. Returning.");
                             return;
                         }
                         if right_vars
                             .par_iter()
                             .all(|var| matches!(var, RatioExt::Finite(ratio) if ratio.is_integer()))
                         {
-                            log::info!("Right branch all integers. Saving.");
+                            log::info!("{progress}. Branch all integers. Saving.");
                             *best_sol = Some(right_sol);
                             return;
                         }
-                        log::info!("Right branch could be improved. Branching.");
+                        log::info!("{progress}. Branch could be improved. Branching.");
                         *best_sol = Some(problem.improve(right_sol, progress));
                     }
                     _ => {
-                        log::info!("Nether best_sol, nor right_sol finite. Returning.");
+                        log::info!("{progress}. Neither best_sol, nor right_sol finite. Returning.");
                     }
                 }
             });
