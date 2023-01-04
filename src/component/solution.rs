@@ -1,11 +1,10 @@
-use std::borrow::Cow;
 use std::{cmp::PartialEq, fmt::Display};
 
 use lazy_static::lazy_static;
 use nalgebra::{DMatrix, Scalar};
 use num_bigint::BigInt;
+use num_rational::BigRational;
 use num_traits::{Signed, Zero};
-use ratio_extension::{BigRationalExt, RatioExt};
 use yew::{function_component, html, AttrValue, Html, Properties, UseStateHandle};
 
 use crate::component::Math;
@@ -27,33 +26,28 @@ pub fn Solution(
     Props {
         is_loading,
         solution_or_err,
-    }: &Props<BigRationalExt>,
+    }: &Props<BigRational>,
 ) -> Html {
-    let ratio_to_latex = |ratio: &BigRationalExt| -> Cow<'static, str> {
-        match ratio {
-            RatioExt::Finite(ratio) => (if ratio.is_integer() {
-                ratio.to_integer().to_string()
-            } else if !ratio.trunc().is_zero() {
-                let whole = ratio.trunc().to_integer();
-                let frac = ratio.fract();
-                format!(
-                    r"{whole}\frac{{{numer}}}{{{denom}}}",
-                    numer = frac.numer(),
-                    denom = frac.denom()
-                )
-            } else {
-                format!(
-                    r"{sign}\frac{{{numer}}}{{{denom}}}",
-                    sign = if ratio.numer() < &ZERO { "-" } else { "" },
-                    numer = ratio.numer().abs(),
-                    denom = ratio.denom()
-                )
-            })
-            .into(),
-            RatioExt::Inf => r"\infty".into(),
-            RatioExt::MinusInf => r"-\infty".into(),
-            RatioExt::Nan => "NaN".into(),
-        }
+    let ratio_to_latex = |ratio: &BigRational| -> String {
+        (if ratio.is_integer() {
+            ratio.to_integer().to_string()
+        } else if !ratio.trunc().is_zero() {
+            let whole = ratio.trunc().to_integer();
+            let frac = ratio.fract();
+            format!(
+                r"{whole}\frac{{{numer}}}{{{denom}}}",
+                numer = frac.numer(),
+                denom = frac.denom()
+            )
+        } else {
+            format!(
+                r"{sign}\frac{{{numer}}}{{{denom}}}",
+                sign = if ratio.numer() < &ZERO { "-" } else { "" },
+                numer = ratio.numer().abs(),
+                denom = ratio.denom()
+            )
+        })
+        .into()
     };
 
     if **is_loading {

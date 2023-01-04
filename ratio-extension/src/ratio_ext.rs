@@ -46,6 +46,13 @@ where
         None
     }
 
+    pub unsafe fn finite_unchecked(self) -> Ratio<T> {
+        if let Self::Finite(value) = self {
+            return value;
+        }
+        hint::unreachable_unchecked()
+    }
+
     pub const fn finite_as_ref(&self) -> Option<&Ratio<T>> {
         if let Self::Finite(value) = self {
             return Some(value);
@@ -168,6 +175,20 @@ where
 {
     fn from(value: T) -> Self {
         Self::Finite(value.into())
+    }
+}
+
+impl<T> TryFrom<RatioExt<T>> for Ratio<T>
+where
+    T: Clone + Integer,
+{
+    type Error = RatioExt<T>;
+
+    fn try_from(value: RatioExt<T>) -> Result<Self, Self::Error> {
+        match value {
+            RatioExt::Finite(ratio) => Ok(ratio),
+            value => Err(value),
+        }
     }
 }
 

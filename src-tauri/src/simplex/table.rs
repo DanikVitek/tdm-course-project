@@ -1,8 +1,9 @@
 use lazy_static::lazy_static;
 use nalgebra::{DMatrix, DVector, DVectorSlice, RowDVector};
+use num_rational::Ratio;
 use num_traits::Zero;
-use ratio_extension::BigRationalExt;
-use rayon::prelude::{IntoParallelIterator, ParallelIterator};
+use ratio_extension::{BigRationalExt, RatioExt};
+use rayon::prelude::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
 use crate::dbg_display;
 
@@ -185,25 +186,43 @@ impl SimplexTable {
                     'b: {
                         log::info!("Optimal solution was found");
                         Ok(Solution {
-                            vars: (0..self.n_significant_variables)
-                                .into_par_iter()
-                                .map(|i| {
-                                    if let Some(k) = self
-                                        .basis
-                                        .iter()
-                                        .enumerate()
-                                        .find_map(|(k, j)| (j == &i).then_some(k))
-                                    {
-                                        self.rhs[k].to_owned()
-                                    } else {
-                                        Zero::zero()
-                                    }
-                                })
-                                .collect(),
-                            fn_val: match self.function_estimation().try_into() {
-                                Ok(val) => val,
+                            vars: {
+                                let vars = (0..self.n_significant_variables)
+                                    .into_par_iter()
+                                    .map(|i| {
+                                        if let Some(k) = self
+                                            .basis
+                                            .iter()
+                                            .enumerate()
+                                            .find_map(|(k, j)| (j == &i).then_some(k))
+                                        {
+                                            self.rhs[k].to_owned()
+                                        } else {
+                                            Zero::zero()
+                                        }
+                                    })
+                                    .collect::<Vec<_>>();
+
+                                if vars
+                                    .par_iter()
+                                    .any(|ratio| !matches!(ratio, RatioExt::Finite(_)))
+                                {
+                                    break 'b Err(SolutionError::Infinite);
+                                }
+
+                                vars.into_par_iter()
+                                    .map(|ratio_ext| unsafe { ratio_ext.finite_unchecked() })
+                                    .collect()
+                            },
+                            fn_val: match BigRationalExt::try_from(
+                                self.function_estimation(),
+                            ) {
+                                Ok(val) => match Ratio::try_from(val) {
+                                    Ok(val) => val,
+                                    Err(_) => break 'b Err(SolutionError::Infinite),
+                                },
                                 Err(err_msg) => {
-                                    log::error!("{err_msg}");
+                                    log::error!("{err_msg:?}");
                                     break 'b Err(SolutionError::Infinite);
                                 }
                             },

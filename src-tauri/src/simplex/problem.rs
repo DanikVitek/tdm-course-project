@@ -11,7 +11,7 @@ use derive_more::{Display, IsVariant};
 use derive_new::new;
 use nalgebra::{Const, DMatrix, DVector, Dynamic, RowDVector, Scalar, UninitMatrix};
 use num_traits::{One, Zero};
-use ratio_extension::{BigRationalExt, RatioExt};
+use ratio_extension::BigRationalExt;
 use rayon::prelude::*;
 
 use crate::{helpers::arc_mut, simplex::SolutionError};
@@ -101,23 +101,16 @@ impl Problem {
         log::info!("Solution:\n{solution}");
 
         let Solution { vars, .. } = &*solution;
-        log::info!("Solution is finite");
-
-        if vars.par_iter().any(|var| !var.is_finite()) {
-            log::info!("Solution has non-finite variables. Returning.");
-            return Ok(Arc::try_unwrap(solution).unwrap());
-        }
-        log::info!("Solution has no non-finite variables");
 
         let Some((i, var)) = vars.par_iter().enumerate().find_map_any(|(i, var)| {
-            matches!(var, RatioExt::Finite(ratio) if !ratio.is_integer()).then_some((i, var))
+            (!var.is_integer()).then_some((i, var))
         }) else {
             log::info!("Solution has all integer variables. Returning.");
             return Ok(Arc::try_unwrap(solution).unwrap());
         };
         log::info!("Solution has non-integer variables");
 
-        let whole_part: BigRationalExt = unsafe { var.finite_as_ref_unchecked() }.trunc().into();
+        let whole_part: BigRationalExt = var.trunc().into();
         let minimization = self.objective_function.minimization;
 
         let best_sol = arc_mut::<Option<Solution>>(None);
@@ -144,9 +137,7 @@ impl Problem {
                     let mut best_sol = best_sol.lock().unwrap();
                     match (&*best_sol, &left_sol) {
                         (None, Solution { vars, .. }) => {
-                            if vars.par_iter().all(
-                                |var| matches!(var, RatioExt::Finite(ratio) if ratio.is_integer()),
-                            ) {
+                            if vars.par_iter().all(|var| var.is_integer()) {
                                 log::info!("{progress}. Branch all integers. Saving.");
                                 *best_sol = Some(left_sol);
                                 return Ok(());
@@ -176,9 +167,7 @@ impl Problem {
                                 );
                                 return Ok(());
                             }
-                            if left_vars.par_iter().all(
-                                |var| matches!(var, RatioExt::Finite(ratio) if ratio.is_integer()),
-                            ) {
+                            if left_vars.par_iter().all(|var| var.is_integer()) {
                                 log::info!("{progress}. Branch all integers. Saving.");
                                 *best_sol = Some(left_sol);
                                 return Ok(());
@@ -189,7 +178,7 @@ impl Problem {
                                 &maybe_improved_sol, 
                                 Solution { fn_val, vars } 
                                 if ((minimization && fn_val < best_fn_val) || (!minimization && fn_val > best_fn_val))
-                                && vars.par_iter().all(|var| matches!(var, RatioExt::Finite(ratio) if ratio.is_integer()))
+                                && vars.par_iter().all(|var| var.is_integer())
                             ) {
                                 *best_sol = Some(maybe_improved_sol);
                             }
@@ -214,7 +203,7 @@ impl Problem {
                     (None, Solution { vars, .. }) => {
                         if vars
                             .par_iter()
-                            .all(|var| matches!(var, RatioExt::Finite(ratio) if ratio.is_integer()))
+                            .all(|var| var.is_integer())
                         {
                             log::info!("{progress}. Branch all integers. Saving.");
                             *best_sol = Some(right_sol);
@@ -242,7 +231,7 @@ impl Problem {
                         }
                         if right_vars
                             .par_iter()
-                            .all(|var| matches!(var, RatioExt::Finite(ratio) if ratio.is_integer()))
+                            .all(|var| var.is_integer())
                         {
                             log::info!("{progress}. Branch all integers. Saving.");
                             *best_sol = Some(right_sol);
@@ -254,7 +243,7 @@ impl Problem {
                             &maybe_improved_sol, 
                             Solution { fn_val, vars } 
                             if ((minimization && fn_val < best_fn_val) || (!minimization && fn_val > best_fn_val))
-                            && vars.par_iter().all(|var| matches!(var, RatioExt::Finite(ratio) if ratio.is_integer()))
+                            && vars.par_iter().all(|var| var.is_integer())
                         ) {
                             *best_sol = Some(maybe_improved_sol);
                         }

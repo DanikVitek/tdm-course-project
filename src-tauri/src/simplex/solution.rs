@@ -1,10 +1,11 @@
-use ratio_extension::BigRationalExt;
 use std::fmt;
+
+use num_rational::BigRational;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Solution {
-    pub fn_val: BigRationalExt,
-    pub vars: Vec<BigRationalExt>,
+    pub fn_val: BigRational,
+    pub vars: Vec<BigRational>,
 }
 
 pub type SolutionResult = Result<Solution, SolutionError>;

@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 
 use nalgebra::{Const, DMatrix, DVector, Dynamic, RowDVector};
+use num_rational::BigRational;
 use num_traits::{FromPrimitive, One, Zero};
 use ratio_extension::BigRationalExt;
 
@@ -12,7 +13,7 @@ pub fn compute(
     cost_rate: DMatrix<BigRationalExt>,
     min_transport_per_line: DVector<BigRationalExt>,
     ships_count_per_type: RowDVector<u16>,
-) -> Result<(DMatrix<BigRationalExt>, BigRationalExt), Cow<'static, str>> {
+) -> Result<(DMatrix<BigRational>, BigRational), Cow<'static, str>> {
     log::info!(
         "Received input:\n\
         transport_rate:\n{transport_rate}\n\

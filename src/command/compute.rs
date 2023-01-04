@@ -1,4 +1,5 @@
 use nalgebra::{DMatrix, DVector, RowDVector};
+use num_rational::BigRational;
 use num_traits::Zero;
 use ratio_extension::BigRationalExt;
 use serde::Serialize;
@@ -23,7 +24,7 @@ pub async fn compute<'a>(
     cost_rate: &'a DMatrix<f64>,
     min_transport_per_line: &'a DVector<f64>,
     ships_count_per_type: &'a RowDVector<u16>,
-) -> Result<(DMatrix<BigRationalExt>, BigRationalExt), String> {
+) -> Result<(DMatrix<BigRational>, BigRational), String> {
     let transport_rate = transport_rate.zip_map(available_ship_line, |a_ij, available| {
         if !available {
             BigRationalExt::zero()

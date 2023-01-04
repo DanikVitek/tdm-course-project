@@ -1,5 +1,5 @@
 use nalgebra::{DMatrix, DVector, RowDVector};
-use ratio_extension::BigRationalExt;
+use num_rational::BigRational;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::spawn_local;
 use yew::prelude::*;
@@ -85,10 +85,10 @@ pub fn App() -> Html {
 
     let is_loading = use_state_eq(|| false);
 
-    let response = use_state::<
-        Result<(DMatrix<BigRationalExt>, BigRationalExt), Option<AttrValue>>,
-        _,
-    >(|| Err(None));
+    let response =
+        use_state::<Result<(DMatrix<BigRational>, BigRational), Option<AttrValue>>, _>(|| {
+            Err(None)
+        });
 
     let solve = {
         reclone!(
