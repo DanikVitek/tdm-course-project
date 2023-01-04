@@ -10,7 +10,7 @@ fn main() {
     tauri::Builder::default()
         .plugin(
             LoggerBuilder::default()
-                .targets([LogTarget::LogDir, LogTarget::Stdout, LogTarget::Webview])
+                .targets([LogTarget::LogDir, LogTarget::Stdout])
                 .build(),
         )
         .invoke_handler(tauri::generate_handler![command::compute])
