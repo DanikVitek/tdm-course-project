@@ -30,7 +30,7 @@ branch = "dev"
 
 [dependencies.derive_more]
 version = "0.99"
-features = ["is_variant", "display", "add"]
+features = ["is_variant", "display", "add", "error"]
 
 [dev-dependencies]
 pretty_assertions = "1.3"

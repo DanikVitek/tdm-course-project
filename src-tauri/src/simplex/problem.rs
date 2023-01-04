@@ -14,9 +14,9 @@ use num_traits::{One, Zero};
 use ratio_extension::{BigRationalExt, RatioExt};
 use rayon::prelude::*;
 
-use crate::helpers::arc_mut;
+use crate::{helpers::arc_mut, simplex::SolutionError};
 
-use super::{big_number::BigNumber, SimplexTable, Solution};
+use super::{big_number::BigNumber, SimplexTable, Solution, SolutionResult};
 
 #[derive(Debug, Clone, PartialEq, Display, new)]
 #[display(
@@ -69,7 +69,7 @@ impl Problem {
         Self::normalize(objective_function, constraints)
     }
 
-    pub fn solve(self) -> Solution {
+    pub fn solve(self) -> SolutionResult {
         let mut table = SimplexTable::new(self);
 
         log::info!("Iteration: 1");
@@ -87,8 +87,8 @@ impl Problem {
         solution.unwrap()
     }
 
-    pub fn solve_with_whole(self) -> Solution {
-        let solution = self.clone().solve();
+    pub fn solve_with_whole(self) -> SolutionResult {
+        let solution = self.clone().solve()?;
 
         let progress = "root".into();
         log::info!("{progress}");
@@ -96,152 +96,149 @@ impl Problem {
         self.improve(solution, Arc::new(progress))
     }
 
-    fn improve(self, solution: Solution, progress: Arc<Cow<'static, str>>) -> Solution {
+    fn improve(self, solution: Solution, progress: Arc<Cow<'static, str>>) -> SolutionResult {
         let solution = Arc::new(solution);
         log::info!("Solution:\n{solution}");
 
-        let Solution::Finite { vars, .. } = &*solution else {
-            log::info!("Solution is not finite. Returning.");
-            return Arc::try_unwrap(solution).unwrap();
-        };
+        let Solution { vars, .. } = &*solution;
         log::info!("Solution is finite");
 
-        if vars.par_iter().any(|var| !RatioExt::is_finite(var)) {
-            log::info!("Solution has infinite variables. Returning.");
-            return Arc::try_unwrap(solution).unwrap();
+        if vars.par_iter().any(|var| !var.is_finite()) {
+            log::info!("Solution has non-finite variables. Returning.");
+            return Ok(Arc::try_unwrap(solution).unwrap());
         }
-        log::info!("Solution has no infinite variables");
+        log::info!("Solution has no non-finite variables");
 
         let Some((i, var)) = vars.par_iter().enumerate().find_map_any(|(i, var)| {
-            (!unsafe { var.finite_as_ref_unchecked() }.is_integer()).then_some((i, var))
+            matches!(var, RatioExt::Finite(ratio) if !ratio.is_integer()).then_some((i, var))
         }) else {
             log::info!("Solution has all integer variables. Returning.");
-            return Arc::try_unwrap(solution).unwrap();
+            return Ok(Arc::try_unwrap(solution).unwrap());
         };
         log::info!("Solution has non-integer variables");
 
-        let var: BigRationalExt = unsafe { var.finite_as_ref_unchecked() }.trunc().into();
+        let whole_part: BigRationalExt = unsafe { var.finite_as_ref_unchecked() }.trunc().into();
         let minimization = self.objective_function.minimization;
 
         let best_sol = arc_mut::<Option<Solution>>(None);
 
         // Parallel branches computation
-        thread::scope(|s| {
+        thread::scope(|s| -> Result<(), SolutionError> {
             let best_sol = best_sol.clone();
             let problem = Arc::new(&self);
 
             // Left branch
-            s.spawn({
+            let left_join_handle = s.spawn({
                 let best_sol = best_sol.clone();
-                let var = var.clone();
+                let whole_part = whole_part.clone();
                 let progress = progress.clone();
                 let problem = problem.clone();
-                move || {
+                move || -> Result<(), SolutionError> {
                     let progress = Arc::new(format!("{progress}.left").into());
                     log::info!("{progress}");
 
                     let mut problem = (*problem).clone();
-                    problem.add_constraint_on_var(i, Sign::Less, var);
-                    let left_sol = problem.clone().solve();
+                    problem.add_constraint_on_var(i, Sign::Less, whole_part);
+                    let left_sol = problem.clone().solve()?;
 
                     let mut best_sol = best_sol.lock().unwrap();
                     match (&*best_sol, &left_sol) {
-                        (None, Solution::Finite { vars, .. })
-                        | (Some(Solution::Infinite), Solution::Finite { vars, .. })
-                        | (Some(Solution::Absent), Solution::Finite { vars, .. }) => {
+                        (None, Solution { vars, .. }) => {
                             if vars.par_iter().all(
                                 |var| matches!(var, RatioExt::Finite(ratio) if ratio.is_integer()),
                             ) {
                                 log::info!("{progress}. Branch all integers. Saving.");
                                 *best_sol = Some(left_sol);
-                                return;
+                                return Ok(());
                             }
                             log::info!("{progress}. Branch could be improved. Branching.");
-                            *best_sol = Some(problem.improve(left_sol, progress));
-                        }
-                        (None, _) => {
-                            log::info!("{progress}. Branch won't be better. Saving.");
-                            *best_sol = Some(left_sol);
+
+                            *best_sol = Some(problem.improve(left_sol, progress)?);
                         }
                         (
-                            Some(Solution::Finite {
+                            Some(Solution {
                                 fn_val: best_fn_val,
                                 ..
                             }),
-                            Solution::Finite {
+                            Solution {
                                 fn_val: left_fn_val,
                                 vars: left_vars,
                             },
                         ) => {
                             if minimization && best_fn_val <= left_fn_val {
-                                log::info!("{progress}. Branch worse than the best_sol. Returning.");
-                                return;
+                                log::info!(
+                                    "{progress}. Branch worse than the best_sol. Returning."
+                                );
+                                return Ok(());
                             } else if !minimization && best_fn_val >= left_fn_val {
-                                log::info!("{progress}. Branch worse than the best_sol. Returning.");
-                                return;
+                                log::info!(
+                                    "{progress}. Branch worse than the best_sol. Returning."
+                                );
+                                return Ok(());
                             }
                             if left_vars.par_iter().all(
                                 |var| matches!(var, RatioExt::Finite(ratio) if ratio.is_integer()),
                             ) {
                                 log::info!("{progress}. Branch all integers. Saving.");
                                 *best_sol = Some(left_sol);
-                                return;
+                                return Ok(());
                             }
                             log::info!("{progress}. Branch could be improved. Branching.");
-                            *best_sol = Some(problem.improve(left_sol, progress));
-                        }
-                        _ => {
-                            log::info!("{progress}. Neither best_sol, nor left_sol finite. Returning.");
+                            let maybe_improved_sol = problem.improve(left_sol, progress)?;
+                            if matches!(
+                                &maybe_improved_sol, 
+                                Solution { fn_val, vars } 
+                                if ((minimization && fn_val < best_fn_val) || (!minimization && fn_val > best_fn_val))
+                                && vars.par_iter().all(|var| matches!(var, RatioExt::Finite(ratio) if ratio.is_integer()))
+                            ) {
+                                *best_sol = Some(maybe_improved_sol);
+                            }
                         }
                     }
+
+                    Ok(())
                 }
             });
 
             // Right branch
-            s.spawn(move || {
+            let right_join_handle = s.spawn(move || -> Result<(), SolutionError> {
                 let progress = Arc::new(format!("{progress}.right").into());
                 log::info!("{progress}");
 
                 let mut problem = (*problem).clone();
-                problem.add_constraint_on_var(i, Sign::Greater, var + BigRationalExt::one());
-                let right_sol = problem.clone().solve();
+                problem.add_constraint_on_var(i, Sign::Greater, whole_part + BigRationalExt::one());
+                let right_sol = problem.clone().solve()?;
 
                 let mut best_sol = best_sol.lock().unwrap();
                 match (&*best_sol, &right_sol) {
-                    (None, Solution::Finite { vars, .. })
-                    | (Some(Solution::Infinite), Solution::Finite { vars, .. })
-                    | (Some(Solution::Absent), Solution::Finite { vars, .. }) => {
+                    (None, Solution { vars, .. }) => {
                         if vars
                             .par_iter()
                             .all(|var| matches!(var, RatioExt::Finite(ratio) if ratio.is_integer()))
                         {
                             log::info!("{progress}. Branch all integers. Saving.");
                             *best_sol = Some(right_sol);
-                            return;
+                            return Ok(());
                         }
                         log::info!("{progress}. Branch could be improved. Branching.");
-                        *best_sol = Some(problem.improve(right_sol, progress));
-                    }
-                    (None, _) => {
-                        log::info!("{progress}. Branch won't be better. Saving.");
-                        *best_sol = Some(right_sol);
+                        *best_sol = Some(problem.improve(right_sol, progress)?);
                     }
                     (
-                        Some(Solution::Finite {
+                        Some(Solution {
                             fn_val: best_fn_val,
                             ..
                         }),
-                        Solution::Finite {
+                        Solution {
                             fn_val: right_fn_val,
                             vars: right_vars,
                         },
                     ) => {
                         if minimization && best_fn_val <= right_fn_val {
                             log::info!("{progress}. Branch worse than the best_sol. Returning.");
-                            return;
+                            return Ok(());
                         } else if !minimization && best_fn_val >= right_fn_val {
                             log::info!("{progress}. Branch worse than the best_sol. Returning.");
-                            return;
+                            return Ok(());
                         }
                         if right_vars
                             .par_iter()
@@ -249,25 +246,37 @@ impl Problem {
                         {
                             log::info!("{progress}. Branch all integers. Saving.");
                             *best_sol = Some(right_sol);
-                            return;
+                            return Ok(());
                         }
                         log::info!("{progress}. Branch could be improved. Branching.");
-                        *best_sol = Some(problem.improve(right_sol, progress));
-                    }
-                    _ => {
-                        log::info!("{progress}. Neither best_sol, nor right_sol finite. Returning.");
+                        let maybe_improved_sol = problem.improve(right_sol, progress)?;
+                        if matches!(
+                            &maybe_improved_sol, 
+                            Solution { fn_val, vars } 
+                            if ((minimization && fn_val < best_fn_val) || (!minimization && fn_val > best_fn_val))
+                            && vars.par_iter().all(|var| matches!(var, RatioExt::Finite(ratio) if ratio.is_integer()))
+                        ) {
+                            *best_sol = Some(maybe_improved_sol);
+                        }
                     }
                 }
+
+                Ok(())
             });
-        });
+
+            left_join_handle.join().unwrap()?;
+            right_join_handle.join().unwrap()?;
+
+            Ok(())
+        })?;
 
         log::info!("Computed both branches");
 
-        Arc::try_unwrap(best_sol)
-            .unwrap()
-            .into_inner()
-            .unwrap()
-            .unwrap()
+        Ok(Arc::try_unwrap(best_sol)
+                    .unwrap()
+                    .into_inner()
+                    .unwrap()
+                    .unwrap())
     }
 
     fn add_constraint_on_var(&mut self, i: usize, mut sign: Sign, rhs: BigRationalExt) {

@@ -25,55 +25,55 @@ extern "C" {
 #[function_component]
 pub fn App() -> Html {
     let available_ship_line =
-        use_state_eq::<DMatrix<bool>, _>(|| DMatrix::from_row_slice(4, 3, &[true; 12]));
+        use_state_eq::<DMatrix<bool>, _>(|| DMatrix::from_row_slice(3, 4, &[true; 12]));
 
     let transport_rate = use_state_eq::<DMatrix<f64>, _>(|| {
-        DMatrix::from_row_slice(
-            4,
-            3,
-            &[
-                15., 30., 25., //
-                10., 25., 50., //
-                20., 10., 30., //
-                50., 17., 45., //
-            ],
-        )
         // DMatrix::from_row_slice(
-        //     3,
         //     4,
+        //     3,
         //     &[
-        //         25., 25., 35., 20., //
-        //         30., 50., 40., 30., //
-        //         15., 15., 25., 10., //
+        //         15., 30., 25., //
+        //         10., 25., 50., //
+        //         20., 10., 30., //
+        //         50., 17., 45., //
         //     ],
         // )
+        DMatrix::from_row_slice(
+            3,
+            4,
+            &[
+                25., 25., 35., 20., //
+                30., 50., 40., 30., //
+                15., 15., 25., 10., //
+            ],
+        )
     });
     let cost_rate = use_state_eq::<DMatrix<f64>, _>(|| {
-        DMatrix::from_row_slice(
-            4,
-            3,
-            &[
-                15., 70., 40., //
-                20., 23., 70., //
-                25., 15., 40., //
-                40., 45., 65., //
-            ],
-        )
         // DMatrix::from_row_slice(
-        //     3,
         //     4,
+        //     3,
         //     &[
-        //         15., 30., 10., 30., //
-        //         20., 70., 20., 25., //
-        //         40., 30., 15., 20., //
+        //         15., 70., 40., //
+        //         20., 23., 70., //
+        //         25., 15., 40., //
+        //         40., 45., 65., //
         //     ],
         // )
+        DMatrix::from_row_slice(
+            3,
+            4,
+            &[
+                15., 30., 10., 30., //
+                20., 70., 20., 25., //
+                40., 30., 15., 20., //
+            ],
+        )
     });
     let min_transport_per_line = use_state_eq::<DVector<f64>, _>(
-        || DVector::from_column_slice(&[300., 200., 1000., 500.]), // DVector::from_column_slice(&[600., 2000., 1200.])
+        || /* DVector::from_column_slice(&[300., 200., 1000., 500.]), // */ DVector::from_column_slice(&[600., 2000., 1200.]),
     );
     let ships_count_per_type = use_state_eq::<RowDVector<u16>, _>(
-        || RowDVector::from_row_slice(&[50, 20, 30]), // RowDVector::from_row_slice(&[40, 60, 20, 70])
+        || /* RowDVector::from_row_slice(&[50, 20, 30]), // */ RowDVector::from_row_slice(&[40, 60, 20, 70]),
     );
 
     assert_eq!(transport_rate.shape(), cost_rate.shape());

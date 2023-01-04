@@ -7,6 +7,7 @@ use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use crate::dbg_display;
 
 use super::{big_number::BigNumber, ObjectiveFunction, Problem, Solution};
+use super::{SolutionError, SolutionResult};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SimplexTable {
@@ -97,7 +98,10 @@ impl SimplexTable {
         }
     }
 
-    pub fn step(&mut self, prev_pivot_column: Option<usize>) -> (Option<Solution>, Option<usize>) {
+    pub fn step(
+        &mut self,
+        prev_pivot_column: Option<usize>,
+    ) -> (Option<SolutionResult>, Option<usize>) {
         log::debug!("Tableau:{}", self.tableau);
         if self.minimization {
             log::info!("Minimization step");
@@ -108,7 +112,10 @@ impl SimplexTable {
         }
     }
 
-    fn step_min(&mut self, prev_pivot_column: Option<usize>) -> (Option<Solution>, Option<usize>) {
+    fn step_min(
+        &mut self,
+        prev_pivot_column: Option<usize>,
+    ) -> (Option<SolutionResult>, Option<usize>) {
         let pivot_col: Option<usize> = (0..self.tableau.ncols())
             .filter_map(|i| {
                 let estimation = unsafe { self.column_estimation_unchecked(i) };
@@ -120,7 +127,7 @@ impl SimplexTable {
 
         log::info!("Pivot column: {pivot_col:?}");
         if pivot_col.is_some() && prev_pivot_column == pivot_col {
-            return (Some(Solution::Absent), pivot_col);
+            return (Some(Err(SolutionError::Absent)), pivot_col);
         }
 
         match pivot_col {
@@ -177,7 +184,7 @@ impl SimplexTable {
                     } else */
                     'b: {
                         log::info!("Optimal solution was found");
-                        Solution::Finite {
+                        Ok(Solution {
                             vars: (0..self.n_significant_variables)
                                 .into_par_iter()
                                 .map(|i| {
@@ -197,10 +204,10 @@ impl SimplexTable {
                                 Ok(val) => val,
                                 Err(err_msg) => {
                                     log::error!("{err_msg}");
-                                    break 'b Solution::Infinite;
+                                    break 'b Err(SolutionError::Infinite);
                                 }
                             },
-                        }
+                        })
                     },
                 ),
                 pivot_col,
@@ -208,7 +215,10 @@ impl SimplexTable {
         }
     }
 
-    fn step_max(&mut self, _prev_pivot_column: Option<usize>) -> (Option<Solution>, Option<usize>) {
+    fn step_max(
+        &mut self,
+        _prev_pivot_column: Option<usize>,
+    ) -> (Option<SolutionResult>, Option<usize>) {
         unimplemented!()
     }
 }

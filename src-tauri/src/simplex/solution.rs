@@ -1,52 +1,42 @@
 use ratio_extension::BigRationalExt;
-use std::borrow::Cow;
 use std::fmt;
 
-use derive_more::IsVariant;
-
-#[derive(Debug, Clone, PartialEq, IsVariant)]
-pub enum Solution {
-    Finite {
-        fn_val: BigRationalExt,
-        vars: Vec<BigRationalExt>,
-    },
-    Infinite,
-    Absent,
+#[derive(Debug, Clone, PartialEq)]
+pub struct Solution {
+    pub fn_val: BigRationalExt,
+    pub vars: Vec<BigRationalExt>,
 }
 
-impl Solution {
-    pub fn unwrap_finite(self) -> (BigRationalExt, Vec<BigRationalExt>) {
-        if let Self::Finite { fn_val, vars } = self {
-            return (fn_val, vars);
-        }
-        panic!("Solution is not finite")
-    }
+pub type SolutionResult = Result<Solution, SolutionError>;
 
-    pub fn unwrap_finite_ref(&self) -> (&BigRationalExt, &[BigRationalExt]) {
-        if let Self::Finite { fn_val, vars } = self {
-            return (fn_val, vars);
-        }
-        panic!("Solution is not finite")
-    }
-
-    pub fn as_str(&self) -> Cow<'static, str> {
-        match self {
-            Solution::Finite { fn_val, vars } => format!(
-                "Змінні:\n[{}]\nЗначення функції: {fn_val}",
-                vars.iter()
-                    .map(|v| v.to_string())
-                    .collect::<Vec<_>>()
-                    .join(", "),
-            )
-            .into(),
-            Solution::Infinite => "Розв'язок нескінченний".into(),
-            Solution::Absent => "Розв'язок відсутній".into(),
-        }
-    }
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    derive_more::Display,
+    derive_more::Error,
+    derive_more::IsVariant,
+)]
+pub enum SolutionError {
+    #[display(fmt = "Розв'язок нескінченний")]
+    Infinite,
+    #[display(fmt = "Розв'язок відсутній")]
+    Absent,
 }
 
 impl fmt::Display for Solution {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.as_str())
+        write!(
+            f,
+            "Змінні:\n[{}]\nЗначення функції: {}",
+            self.vars
+                .iter()
+                .map(|v| v.to_string())
+                .collect::<Vec<_>>()
+                .join(", "),
+            self.fn_val
+        )
     }
 }

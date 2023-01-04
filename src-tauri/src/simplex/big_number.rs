@@ -141,20 +141,6 @@ impl TryFrom<BigNumber<f64>> for f64 {
     }
 }
 
-// impl<T> TryFrom<BigNumber<T>> for T
-// where
-//     T: Zero,
-// {
-//     type Error = String;
-
-//     fn try_from(value: BigNumber<T>) -> Result<Self, Self::Error> {
-//         if !value.big_part.is_zero() {
-//             return Err(format!("The number is too big: {value}"));
-//         }
-//         Ok(value.small_part)
-//     }
-// }
-
 impl<T> From<T> for BigNumber<T>
 where
     T: Zero,
