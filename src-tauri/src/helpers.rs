@@ -1,3 +1,5 @@
+use std::sync::{Arc, Mutex};
+
 #[macro_export]
 macro_rules! ensure_eq {
     ($expr1: expr, $expr2: expr) => {
@@ -18,7 +20,7 @@ macro_rules! dbg_display {
     ($e: expr) => {{
         let val = $e;
         log::debug!(
-            "[{}/{}:{}] {} = {}",
+            "[{}|{}:{}] {} = {}",
             file!(),
             line!(),
             column!(),
@@ -27,4 +29,8 @@ macro_rules! dbg_display {
         );
         val
     }};
+}
+
+pub fn arc_mut<T>(value: T) -> Arc<Mutex<T>> {
+    Arc::new(Mutex::new(value))
 }

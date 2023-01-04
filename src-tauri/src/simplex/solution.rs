@@ -6,32 +6,32 @@ use derive_more::IsVariant;
 #[derive(Debug, Clone, PartialEq, IsVariant)]
 pub enum Solution {
     Finite {
-        variables: Vec<BigRationalExt>,
         function_value: BigRationalExt,
+        variables: Vec<BigRationalExt>,
     },
     Infinite,
     Absent,
 }
 
 impl Solution {
-    pub fn unwrap_finite(self) -> (Vec<BigRationalExt>, BigRationalExt) {
+    pub fn unwrap_finite(self) -> (BigRationalExt, Vec<BigRationalExt>) {
         if let Self::Finite {
-            variables,
             function_value,
+            variables,
         } = self
         {
-            return (variables, function_value);
+            return (function_value, variables);
         }
         panic!("Solution is not finite")
     }
 
-    pub fn unwrap_finite_ref(&self) -> (&[BigRationalExt], &BigRationalExt) {
+    pub fn unwrap_finite_ref(&self) -> (&BigRationalExt, &[BigRationalExt]) {
         if let Self::Finite {
-            variables,
             function_value,
+            variables,
         } = self
         {
-            return (variables, function_value);
+            return (function_value, variables);
         }
         panic!("Solution is not finite")
     }

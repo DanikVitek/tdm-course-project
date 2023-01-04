@@ -1,7 +1,7 @@
 use std::{
     cmp::Ordering,
     fmt,
-    hint::{unreachable_unchecked, self},
+    hint::{self, unreachable_unchecked},
     iter::{Product, Sum},
     mem,
     ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign},
