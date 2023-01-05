@@ -1,7 +1,7 @@
 use std::{
     cmp::Ordering,
     fmt,
-    hint::{self, unreachable_unchecked},
+    hint::unreachable_unchecked,
     iter::{Product, Sum},
     mem,
     ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign},
@@ -52,7 +52,7 @@ where
         if let Self::Finite(value) = self {
             return value;
         }
-        hint::unreachable_unchecked()
+        unreachable_unchecked()
     }
 
     pub const fn finite_as_ref(&self) -> Option<&Ratio<T>> {
@@ -68,7 +68,7 @@ where
         if let Self::Finite(value) = self {
             return value;
         }
-        hint::unreachable_unchecked()
+        unreachable_unchecked()
     }
 }
 
