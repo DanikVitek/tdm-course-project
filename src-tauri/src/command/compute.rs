@@ -48,7 +48,7 @@ pub fn compute(
     );
     log::info!("Problem formed: {problem}");
 
-    let solution = problem.solve/* _with_whole */();
+    let solution = problem.solve_with_whole();
 
     match solution {
         Ok(solution) => {

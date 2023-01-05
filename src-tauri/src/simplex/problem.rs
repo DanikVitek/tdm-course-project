@@ -127,7 +127,7 @@ impl Problem {
                 move || -> Result<(), SolutionError> {
                     Self::add_branch(
                         &format!("{progress}.left"),
-                        problem,
+                        &problem,
                         i,
                         Sign::Less,
                         whole_part,
@@ -141,7 +141,7 @@ impl Problem {
             let right_join_handle = s.spawn(move || -> Result<(), SolutionError> {
                 Self::add_branch(
                     &format!("{progress}.right"),
-                    problem,
+                    &problem,
                     i,
                     Sign::Greater,
                     whole_part + BigRationalExt::one(),
@@ -167,7 +167,7 @@ impl Problem {
 
     fn add_branch(
         progress: &str,
-        problem: Arc<&Problem>,
+        problem: &Problem,
         i: usize,
         constraint_sign: Sign,
         rhs: BigRationalExt,

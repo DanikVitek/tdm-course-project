@@ -46,6 +46,8 @@ where
         None
     }
 
+    /// # Safety
+    /// If [`RatioExt`] is not [`RatioExt::Finite`], then it is UB
     pub unsafe fn finite_unchecked(self) -> Ratio<T> {
         if let Self::Finite(value) = self {
             return value;
@@ -60,6 +62,8 @@ where
         None
     }
 
+    /// # Safety
+    /// If [`RatioExt`] is not [`RatioExt::Finite`], then it is UB
     pub const unsafe fn finite_as_ref_unchecked(&self) -> &Ratio<T> {
         if let Self::Finite(value) = self {
             return value;
@@ -482,7 +486,7 @@ where
     T: Clone + Integer,
 {
     fn mul_assign(&mut self, rhs: Self) {
-        *self += &rhs
+        *self *= &rhs
     }
 }
 
@@ -592,7 +596,7 @@ where
     T: Clone + Integer,
 {
     fn div_assign(&mut self, rhs: Self) {
-        *self *= &rhs;
+        *self /= &rhs;
     }
 }
 
